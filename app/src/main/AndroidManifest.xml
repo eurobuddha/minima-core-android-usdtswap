@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Minima data comes from the local node over broadcast-Intent IPC. Package visibility lets us
+         launch the node app + deliver targeted broadcasts. -->
+    <queries>
+        <package android:name="org.minimarex.minimacore" />
+    </queries>
+
+    <!-- Unlike the node-only merch apps, usdtSwap also talks to the Ethereum network directly
+         (JSON-RPC to a user-configured endpoint) for the ERC20 leg of each atomic swap. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Swap-status notifications (Android 13+ prompts at runtime). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Scan a counterparty / order QR. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- Background swap watcher: a foreground service drives the swap engine whenever the node is
+         reachable, so swaps progress with the app closed (the node alone isn't enough — we're a
+         separate process). Battery exemption keeps the OS from doze-killing it. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- specialUse is NOT time-boxed like dataSync (Android 14/15 caps dataSync FGS ~6h/day, which was
+         killing the overnight order-keeper). Same fix minima-limit uses. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- "Market stays live until cancelled": restart the keeper after reboot/update, and wake a publish
+         tick under Doze (Handler loops stall when the CPU suspends — only exact allow-while-idle alarms
+         fire). USE_EXACT_ALARM (API 33+) is auto-granted; Play policy limits it to alarm-like apps, but
+         this app ships sideloaded via PandaApps and the timed on-chain keep-alive IS the product. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
+
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Utxo"
+        tools:targetApi="31">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".SwapService"
+            android:exported="false"
+            android:stopWithTask="false"
+            android:foregroundServiceType="specialUse|dataSync">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps the user's pegged market published on-chain and progresses in-flight atomic swaps while the app is closed" />
+        </service>
+
+        <!-- exported=false is correct for both: protected system broadcasts reach non-exported receivers. -->
+        <receiver android:name=".BootReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+        <receiver android:name=".HeartbeatReceiver" android:exported="false" />
+    </application>
+
+</manifest>

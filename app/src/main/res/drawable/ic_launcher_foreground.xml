@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- usdtSwap foreground: a white Tether "₮" (T with a crossed stem) centred in the adaptive-icon safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- top bar -->
+    <path android:fillColor="#FFFFFF" android:pathData="M34,38 h40 v9 h-40 z" />
+    <!-- vertical stem -->
+    <path android:fillColor="#FFFFFF" android:pathData="M49.5,38 h9 v36 h-9 z" />
+    <!-- crossed stroke (the ₮ bar) -->
+    <path android:fillColor="#FFFFFF" android:pathData="M41,53 h26 v8 h-26 z" />
+</vector>
