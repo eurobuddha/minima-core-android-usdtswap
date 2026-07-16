@@ -499,7 +499,7 @@ public class MainActivity extends AppCompatActivity {
                 for (int i = 0; i < coins.length(); i++) {
                     JSONObject c = coins.optJSONObject(i);
                     if (c == null) continue;
-                    String amt = c.optString("amount", "0");
+                    String amt = MinimaHtlc.coinAmount(c);
                     String addr = c.optString("address", "");
                     try { sum = sum.add(new java.math.BigDecimal(amt)); } catch (Exception ignore) {}
                     String mx = c.optString("miniaddress", "");

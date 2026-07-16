@@ -176,7 +176,7 @@ public final class SwapEngine {
             double totalFree = 0;                                            // sum of ALL free coins (multi-UTXO backing)
             for (int i = 0; i < coins.length(); i++) {
                 org.json.JSONObject c = coins.optJSONObject(i);
-                if (c != null) totalFree += safeDouble(c.optString("amount", "0"));
+                if (c != null) totalFree += safeDouble(MinimaHtlc.coinAmount(c));
             }
             // The responder locks a tranche by COMBINING coins (lockMinimaCounterLeg), like a wallet send — so
             // advertise the largest PREFIX of ask tranches whose CUMULATIVE amount the total free balance covers.
@@ -433,7 +433,7 @@ public final class SwapEngine {
             } else {
                 // counter = mxUSDT to me — real on-chain check of the maker's lock
                 if (cpMin != null) {
-                    L.add("• Counterparty mxUSDT leg: FOUND " + cpMin.optString("amount", "?") + " mxUSDT — "
+                    L.add("• Counterparty mxUSDT leg: FOUND " + MinimaHtlc.coinAmount(cpMin) + " mxUSDT — "
                             + (secretKnown ? "claimable now (claiming on the next poll)" : "waiting for the secret"));
                 } else {
                     L.add("• Counterparty mxUSDT leg: NOT FOUND yet — the maker hasn't locked mxUSDT (or it's <2 confirmations old).");
@@ -537,7 +537,7 @@ public final class SwapEngine {
         if (secret != null) {
             // I know the secret → claim this coin (reveals it via the notify coin).
             String[] req = db.getRequest(hash);
-            if (req != null && !amountTokenOk(req, coin.optString("amount", "0"), reqTokenAddr, false)) {
+            if (req != null && !amountTokenOk(req, MinimaHtlc.coinAmount(coin), reqTokenAddr, false)) {
                 db.logEvent(hash, SwapDb.EV_COLLECT, "minima", "0", "counterparty amount/token mismatch");
                 return;
             }
@@ -546,9 +546,9 @@ public final class SwapEngine {
             notifier.onSwapsChanged();
             minima.claim(coin, hash, secret, new MinimaHtlc.PostCb() {
                 @Override public void ok(String txpowid) {
-                    db.logEvent(hash, SwapDb.EV_COLLECT, "minima", coin.optString("amount", ""), txpowid);
+                    db.logEvent(hash, SwapDb.EV_COLLECT, "minima", MinimaHtlc.coinAmount(coin), txpowid);
                     db.setSwapStatus(hash, SwapDb.ST_COMPLETE);
-                    notifier.notify("Swap complete", "Claimed " + coin.optString("amount", "") + " mxUSDT");
+                    notifier.notify("Swap complete", "Claimed " + MinimaHtlc.coinAmount(coin) + " mxUSDT");
                     notifier.onSwapsChanged();
                     inflight.remove("claimM:" + hash);
                 }
@@ -577,7 +577,7 @@ public final class SwapEngine {
         if (db.haveCollectExpired(hash) || !inflight.add("refundM:" + hash)) return;
         minima.refund(coin, new MinimaHtlc.PostCb() {
             @Override public void ok(String txpowid) {
-                db.logEvent(hash, SwapDb.EV_EXPIRED, "minima", coin.optString("amount", ""), txpowid);
+                db.logEvent(hash, SwapDb.EV_EXPIRED, "minima", MinimaHtlc.coinAmount(coin), txpowid);
                 db.setSwapStatus(hash, SwapDb.ST_REFUNDED);
                 notifier.notify("Swap refunded", "Timelock passed — reclaimed your mxUSDT");
                 notifier.onSwapsChanged();
@@ -595,7 +595,7 @@ public final class SwapEngine {
             Credentials creds = wallet.creds();
             EthHtlc eth = new EthHtlc(rpc, creds, net);
             String tokenHuman = MinimaHtlc.stateAt(coin, 1);               // ERC20 amount the maker requested
-            String reqMinimaHuman = coin.optString("amount", "0");        // mxUSDT they locked
+            String reqMinimaHuman = MinimaHtlc.coinAmount(coin);        // mxUSDT they locked
             String receiverEth = MinimaHtlc.stateAt(coin, 6);             // maker's ETH address (ownereth)
             BigInteger sellRaw = parseUnits(tokenHuman, token.decimals);
             BigInteger reqRaw = parseUnits(reqMinimaHuman, 18);
@@ -890,7 +890,7 @@ public final class SwapEngine {
                 java.util.List<java.math.BigDecimal> amts = new java.util.ArrayList<>();
                 for (int i = 0; i < coins.length(); i++) {
                     JSONObject cc = coins.optJSONObject(i); if (cc == null) continue;
-                    String cid = cc.optString("coinid", ""), amt = cc.optString("amount", "0");
+                    String cid = cc.optString("coinid", ""), amt = MinimaHtlc.coinAmount(cc);
                     if (cid.isEmpty() || used.contains(cid)) continue;
                     try { java.math.BigDecimal a = new java.math.BigDecimal(amt); ids.add(cid); amts.add(a); freeTotal = freeTotal.add(a); } catch (Exception ignore) {}
                 }
@@ -959,7 +959,7 @@ public final class SwapEngine {
     private boolean acceptTakerSellMinima(JSONObject coin, String reqTokenAddr) {
         Order.Pair p = pairFor(reqTokenAddr);
         if (p == null || !p.enable) return false;
-        BigDecimal recvMinima = dec(coin.optString("amount", "0"));   // mxUSDT the taker locked, I receive
+        BigDecimal recvMinima = dec(MinimaHtlc.coinAmount(coin));   // mxUSDT the taker locked, I receive
         BigDecimal giveUsdt = dec(MinimaHtlc.stateAt(coin, 1));       // USDT they requested, I'd pay
         if (recvMinima.signum() <= 0) return false;
         if (validPos(p.min) && recvMinima.compareTo(BigDecimal.valueOf(p.min)) < 0) return false;   // min>0 = floor; min≤0/NaN = no floor (0.8.2 parity)
@@ -1049,7 +1049,7 @@ public final class SwapEngine {
         EthNet.Token usdt = net.token("USDT");
         if (usdt == null || reqTokenAddr == null || !reqTokenAddr.equalsIgnoreCase(usdt.address)) return false;  // agreed token
         BigDecimal wantMinima = dec(d.amount), wantUsdt = dec(d.amount).multiply(dec(d.price));
-        BigDecimal gotMinima = dec(coin.optString("amount", "0"));                    // mxUSDT they locked
+        BigDecimal gotMinima = dec(MinimaHtlc.coinAmount(coin));                    // mxUSDT they locked
         BigDecimal gotUsdt = dec(MinimaHtlc.stateAt(coin, 1));                        // USDT they request = what I lock
         return approxEq(gotMinima, wantMinima) && approxEq(gotUsdt, wantUsdt);
     }

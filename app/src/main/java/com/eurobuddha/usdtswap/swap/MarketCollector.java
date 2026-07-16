@@ -37,7 +37,7 @@ public final class MarketCollector {
             if (c == null) continue;
             String coinid = c.optString("coinid", "");
             if (coinid.isEmpty()) continue;
-            String size = c.optString("amount", "0");          // mxUSDT locked = trade size
+            String size = MinimaHtlc.coinAmount(c);          // mxUSDT locked = trade size
             String reqAmount = MinimaHtlc.stateAt(c, 1);        // counter-asset (USDT) requested
             double price = price(reqAmount, size);
             if (price <= 0) continue;                           // not a priced lock — skip

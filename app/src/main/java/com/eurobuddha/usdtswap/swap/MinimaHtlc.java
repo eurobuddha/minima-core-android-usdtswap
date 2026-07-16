@@ -263,7 +263,7 @@ public final class MinimaHtlc {
         if (!ready()) { cb.err("Minima wallet not ready"); return; }
         String coinid = coin.optString("coinid", "");
         String tokenid = coin.optString("tokenid", "0x00");
-        String amount = coin.optString("amount", "0");
+        String amount = MinimaHtlc.coinAmount(coin);
         String owner = stateAt(coin, 0);
         String receiver = stateAt(coin, 4);
         String change = subtract(amount, "0.0001");
@@ -292,7 +292,7 @@ public final class MinimaHtlc {
         if (!ready()) { cb.err("Minima wallet not ready"); return; }
         String coinid = coin.optString("coinid", "");
         String tokenid = coin.optString("tokenid", "0x00");
-        String amount = coin.optString("amount", "0");
+        String amount = MinimaHtlc.coinAmount(coin);
         String owner = stateAt(coin, 0);                    // the script's refund signer = state[0]
         String id = txnId();
 
@@ -448,6 +448,19 @@ public final class MinimaHtlc {
     public static String grain(String amt) {
         try { return new java.math.BigDecimal(amt.trim()).setScale(6, java.math.RoundingMode.DOWN).stripTrailingZeros().toPlainString(); }
         catch (Exception e) { return amt; }
+    }
+
+    /** The traded VALUE of a coin. mxUSDT is a COLOURED token: a coin's `amount` field is the tiny underlying
+     *  coloured-Minima (~1e-37 at this token's scale), while the real token value is `tokenamount`. For native
+     *  0x00 there is no `tokenamount` and `amount` IS the value. ALWAYS read a traded coin's amount through here —
+     *  reading `amount` directly on an mxUSDT coin gives ~1e-37, which breaks coin selection / change / claim /
+     *  refund (fund loss). (`send`/`txnoutput amount:` conversely take the TOKEN amount, so those stay as-is.) */
+    public static String coinAmount(JSONObject coin) {
+        if (coin == null) return "0";
+        String ta = coin.optString("tokenamount", "");
+        if (!ta.isEmpty()) return ta;
+        String a = coin.optString("amount", "");   // native 0x00 fallback (no tokenamount → amount IS the value)
+        return a.isEmpty() ? "0" : a;
     }
 
     private static boolean positive(String a) {
