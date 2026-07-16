@@ -15,10 +15,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * MEXC MINIMA/USDT price oracle for the maker's auto-market-maker peg.
+ * MEXC mxUSDT/USDT price oracle for the maker's auto-market-maker peg.
  *
  * A maker can PEG their depth ladder to the live MEXC market: at every publish the 6+6 ladder is
- * regenerated around the oracle mid (step % spacing, a fixed MINIMA size per level, optional skew),
+ * regenerated around the oracle mid (step % spacing, a fixed mxUSDT size per level, optional skew),
  * and the 90s watcher force-republishes when the market moves at least the reprice threshold.
  * The published order is exactly what the responder match-guard enforces, so a pegged maker
  * auto-trades at oracle-tracked prices — which makes feed quality FUND-CRITICAL:
@@ -59,7 +59,7 @@ public final class PriceOracle {
     // peg config — shared "usdtswap" prefs so MainActivity + SwapService read one source of truth
     public static final String P_ENABLE = "peg_enable";      // boolean: ladder pegged to the oracle
     public static final String P_STEP = "peg_step_pct";      // string double: level spacing, % of mid (>0)
-    public static final String P_SIZE = "peg_size";          // string double: MINIMA per level (>0)
+    public static final String P_SIZE = "peg_size";          // string double: mxUSDT per level (>0)
     public static final String P_BIAS = "peg_bias_pct";      // string double: skew, ±% shift of the quoted mid
     public static final String P_REPRICE = "peg_reprice_pct";// string double: republish when moved ≥ this %
     public static final String P_LAST_MID = "peg_last_mid";  // string double: oracle mid at the last pegged publish

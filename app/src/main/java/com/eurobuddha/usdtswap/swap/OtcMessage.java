@@ -36,10 +36,10 @@ public final class OtcMessage {
     public String to = "";            // recipient commsPublicId
     public long   date = 0;
 
-    // negotiated terms (from the LP's perspective for `side`; amount is MINIMA, price is USDT per MINIMA)
+    // negotiated terms (from the LP's perspective for `side`; amount is mxUSDT, price is USDT per mxUSDT)
     public String side = "";          // OtcOffer.LP_SELLS_MINIMA / OtcOffer.LP_BUYS_MINIMA
-    public String amount = "";        // MINIMA for THIS deal, decimal string
-    public String price = "";         // USDT per MINIMA, decimal string
+    public String amount = "";        // mxUSDT for THIS deal, decimal string
+    public String price = "";         // USDT per mxUSDT, decimal string
 
     // sender identities, so the recipient can execute/verify against the sender without a separate lookup
     public String minimaPk = "";      // sender's Minima HTLC pubkey
@@ -79,7 +79,7 @@ public final class OtcMessage {
     public void send(NodeApi node, CryptoProvider crypto, CommsTransport.SendCb cb) {
         try {
             String blob = crypto.seal(to, toWire());
-            CommsTransport.postBlob(node, ADDRESS, CommsTransport.MESSAGE_AMOUNT, CommsTransport.MINIMA, blob, null, cb);
+            CommsTransport.postBlob(node, ADDRESS, CommsTransport.MESSAGE_AMOUNT, CommsTransport.NATIVE, blob, null, cb);
         } catch (Exception e) { cb.onFailed("otc send: " + e.getMessage()); }
     }
 }

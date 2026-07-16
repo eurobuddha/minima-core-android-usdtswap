@@ -8,7 +8,7 @@ import com.eurobuddha.comms.NodeApi;
 import java.nio.charset.StandardCharsets;
 
 /**
- * The buy-MINIMA handshake channel. When a taker buys MINIMA it locks USDT first (generating the
+ * The buy-mxUSDT handshake channel. When a taker buys mxUSDT it locks USDT first (generating the
  * hashlock), then seals {@code {to, from, hash}} to the maker's comms identity and posts it to {@link
  * #ADDRESS}. The maker scans this address, opens the sealed message, and uses the hashlock to find the
  * USDT lock by deterministic contractId = sha256(hash) via getContract — no eth_getLogs, so it works on
@@ -27,7 +27,7 @@ public final class SwapTake {
         try {
             JSONObject j = new JSONObject().put("to", makerPublicId).put("from", myPublicId).put("hash", hash);
             String blob = crypto.seal(makerPublicId, j.toString().getBytes(StandardCharsets.UTF_8));
-            CommsTransport.postBlob(node, ADDRESS, CommsTransport.MESSAGE_AMOUNT, CommsTransport.MINIMA, blob, null, cb);
+            CommsTransport.postBlob(node, ADDRESS, CommsTransport.MESSAGE_AMOUNT, CommsTransport.NATIVE, blob, null, cb);
         } catch (Exception e) {
             cb.onFailed("take send: " + e.getMessage());
         }

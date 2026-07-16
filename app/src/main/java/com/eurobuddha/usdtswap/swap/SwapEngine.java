@@ -111,7 +111,7 @@ public final class SwapEngine {
     public void setOtcDb(OtcDb o) { this.otcDb = o; }
     public String swapStatus(String hash) { SwapDb.Swap s = db.getSwap(hash); return s == null ? null : s.status; }
 
-    // ── maker coin-readiness: keep the ask ladder backed by enough separately-spendable MINIMA coins ──────────
+    // ── maker coin-readiness: keep the ask ladder backed by enough separately-spendable mxUSDT coins ──────────
     // Minima is UTXO-based: locking N concurrent counter-legs for a swept N-tranche ask ladder needs N coins each
     // ≥ a tranche. With one big coin, lock 1 spends it and its change is unconfirmed, so later locks starve (the
     // 750-sweep leg-1 non-fill). We clamp the advertised ladder to what's lockable NOW and split coins toward full
@@ -129,7 +129,7 @@ public final class SwapEngine {
     private static final long CP_LOCK_TIMEOUT_SECS = 600;   // per-leg watchdog (its leg refunds if it never confirms); ≫ a normal ~2-block confirm
     private final Map<String,String> cpInFlight  = Collections.synchronizedMap(new HashMap<>());  // hash → pinned coinid ("" = slot reserved, coin not yet picked)
     private final Map<String,Long>   cpLockSince = Collections.synchronizedMap(new HashMap<>());  // hash → lock time (watchdog)
-    // PROCESS-WIDE per-hash marker: MainActivity + SwapService run SEPARATE engines (same process). The MINIMA leg
+    // PROCESS-WIDE per-hash marker: MainActivity + SwapService run SEPARATE engines (same process). The mxUSDT leg
     // has no on-chain hash-uniqueness, so without this a fg↔bg handoff mid-lock could lock a SECOND coin for the
     // SAME hash → the taker claims both with one secret → the maker loses the second coin. Shared + released on
     // err/watchdog/confirm; keyed by hash so it blocks a same-hash re-lock WITHOUT blocking distinct-hash bursts.
@@ -138,11 +138,11 @@ public final class SwapEngine {
     // All cpInFlight/CP_LOCKING mutations go through the shared CP_LOCKING monitor (single lock, one invariant:
     // cpInFlight.size() ≤ CP_LOCK_BURST) — never two monitors on the same state.
     private final java.util.Set<String> cpNoted = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
-    /** One-time notify when the MINIMA counter-leg can't be locked (insufficient / too-fragmented) — replaces the
+    /** One-time notify when the mxUSDT counter-leg can't be locked (insufficient / too-fragmented) — replaces the
      *  old silent return so an unfillable deal is visible to the LP instead of a mystery hang. */
     private void declineCpNote(String hash, String reason) {
         if (!cpNoted.add(hash)) return;
-        ui.post(() -> notifier.notify("Can't lock your MINIMA", reason));
+        ui.post(() -> notifier.notify("Can't lock your mxUSDT", reason));
     }
 
     private void releaseCpLeg(String hash) {
@@ -163,7 +163,7 @@ public final class SwapEngine {
     }
 
     private void checkLadderCoins(Order o, boolean allowSplit, boolean clamp, Runnable afterPublish) {
-        // Single MINIMA/USDT pair today: inspect the first enabled ask ladder. A second MINIMA-quoted pair would
+        // Single mxUSDT/USDT pair today: inspect the first enabled ask ladder. A second mxUSDT-quoted pair would
         // draw asks from the SAME coin pool, so multi-pair support would need pooled accounting across pairs here.
         String sym = null;
         for (java.util.Map.Entry<String, Order.Pair> e : o.pairs.entrySet()) {
@@ -200,7 +200,7 @@ public final class SwapEngine {
         try { return Double.parseDouble(s.trim()); } catch (Exception e) { return 0; }
     }
 
-    /** True while a coin-split self-send is in flight — a SELL sweep should wait, since both pick MINIMA coins
+    /** True while a coin-split self-send is in flight — a SELL sweep should wait, since both pick mxUSDT coins
      *  unpinned and could select the same one (fund-safe: the loser is dropped, but the sweep could abort). */
     public boolean isSplitting() { return inflight.contains("split"); }
 
@@ -217,7 +217,7 @@ public final class SwapEngine {
 
     // ============================================================ initiate (user-driven)
 
-    /** I give MINIMA, want an ERC20 token. I lock MINIMA FIRST (block+144) and generate the secret. */
+    /** I give mxUSDT, want an ERC20 token. I lock mxUSDT FIRST (block+144) and generate the secret. */
     public void startMinimaToErc20(Order maker, String sellMinima, String tokenSymbol, String buyTokenAmount, StartCb cb) {
         startMinimaToErc20(maker, sellMinima, tokenSymbol, buyTokenAmount, false, cb);
     }
@@ -241,7 +241,7 @@ public final class SwapEngine {
                                 db.logEvent(hash, SwapDb.EV_STARTED, "minima", sellMinima, txpowid);
                                 db.insertMyHtlc(hash, buyTokenAmount, reqToken);
                                 SwapDb.Swap s = baseSwap(hash, "INITIATOR", "MINIMA_TO_ERC20",
-                                        "MINIMA", sellMinima, tokenSymbol, buyTokenAmount, maker.ethAddress);
+                                        "mxUSDT", sellMinima, tokenSymbol, buyTokenAmount, maker.ethAddress);
                                 s.myTimelock = timelock; s.myLegIsMinima = true; s.status = SwapDb.ST_STARTED;
                                 db.upsertSwap(s);
                                 notifier.onSwapsChanged();
@@ -257,7 +257,7 @@ public final class SwapEngine {
         });
     }
 
-    /** I give an ERC20 token, want MINIMA. I lock the ERC20 FIRST (now+7200s) and generate the secret. */
+    /** I give an ERC20 token, want mxUSDT. I lock the ERC20 FIRST (now+7200s) and generate the secret. */
     public void startErc20ToMinima(Order maker, String tokenSymbol, String sellTokenAmount, String buyMinima, StartCb cb) {
         startErc20ToMinima(maker, tokenSymbol, sellTokenAmount, buyMinima, false, cb);
     }
@@ -272,9 +272,9 @@ public final class SwapEngine {
         lp.commsPublicId = deal.peerCommsId;
         String usdt = dec(deal.amount).multiply(dec(deal.price)).setScale(6, java.math.RoundingMode.DOWN).toPlainString();
         if (OtcOffer.LP_SELLS_MINIMA.equals(deal.side))
-            startErc20ToMinima(lp, "USDT", usdt, deal.amount, true, cb);   // LP sells MINIMA → I BUY: lock USDT
+            startErc20ToMinima(lp, "USDT", usdt, deal.amount, true, cb);   // LP sells mxUSDT → I BUY: lock USDT
         else
-            startMinimaToErc20(lp, deal.amount, "USDT", usdt, true, cb);    // LP buys MINIMA → I SELL: lock MINIMA
+            startMinimaToErc20(lp, deal.amount, "USDT", usdt, true, cb);    // LP buys mxUSDT → I SELL: lock mxUSDT
     }
 
     /** As above, with the OTC bit: {@code otc=true} sets the ETH contract's otc flag so the ladder auto-responder
@@ -301,7 +301,7 @@ public final class SwapEngine {
                             db.insertSecret(hash, secret);
                             db.insertMyHtlc(hash, buyMinima, "minima");
                             SwapDb.Swap s = baseSwap(hash, "INITIATOR", "ERC20_TO_MINIMA",
-                                    tokenSymbol, sellTokenAmount, "MINIMA", buyMinima, maker.minimaPublicKey);
+                                    tokenSymbol, sellTokenAmount, "mxUSDT", buyMinima, maker.minimaPublicKey);
                             s.myTimelock = timelock; s.myLegIsMinima = false; s.status = SwapDb.ST_STARTED;
                             s.contractId = EthHtlc.contractId(hash);
                             db.upsertSwap(s);
@@ -396,7 +396,7 @@ public final class SwapEngine {
     private void reportInspection(SwapDb.Swap s, String hash, int block, JSONObject myMin, JSONObject cpMin, InspectCb cb) {
         java.util.List<String> L = new java.util.ArrayList<>();
         try {
-            boolean sell = "MINIMA_TO_ERC20".equals(s.direction);   // I sold MINIMA → counter leg is ETH USDT
+            boolean sell = "MINIMA_TO_ERC20".equals(s.direction);   // I sold mxUSDT → counter leg is ETH USDT
             boolean secretKnown = db.getSecret(hash) != null;
             L.add((sell ? "Sell " : "Buy ") + s.sellAmount + " " + s.sellToken + " → " + s.buyAmount + " " + s.buyToken
                     + "  ·  " + s.status.toLowerCase());
@@ -406,10 +406,10 @@ public final class SwapEngine {
             if (s.myLegIsMinima) {
                 if (myMin != null) {
                     int tl = parseInt(MinimaHtlc.stateAt(myMin, 3));
-                    L.add("• Your " + s.sellAmount + " MINIMA: LOCKED — refundable at block " + tl
+                    L.add("• Your " + s.sellAmount + " mxUSDT: LOCKED — refundable at block " + tl
                             + (block > 0 ? " (~" + Math.max(0, (tl - block)) * 50 / 60 + " min)" : ""));
                 } else {
-                    L.add("• Your " + s.sellAmount + " MINIMA: not locked on-chain now — "
+                    L.add("• Your " + s.sellAmount + " mxUSDT: not locked on-chain now — "
                             + (SwapDb.ST_REFUNDED.equals(s.status) ? "refunded" : SwapDb.ST_COMPLETE.equals(s.status) ? "claimed by the counterparty (complete)" : "spent/claimed"));
                 }
             } else {
@@ -428,15 +428,15 @@ public final class SwapEngine {
                     L.add("• Counterparty " + s.buyToken + " leg: FOUND " + EthWallet.format(gc.amount, decimalsOf(gc.tokenContract), 6)
                             + " " + s.buyToken + (claimable ? " — claimable now" : (gc.withdrawn ? " — withdrawn (complete)" : " — refunded")));
                     if (claimable) L.add("→ Claiming on the next poll — your " + s.buyToken + " arrives shortly.");
-                    else if (gc.refunded) L.add("→ Maker's leg timed out & refunded; your MINIMA auto-refunds at block " + s.myTimelock + ".");
+                    else if (gc.refunded) L.add("→ Maker's leg timed out & refunded; your mxUSDT auto-refunds at block " + s.myTimelock + ".");
                 }
             } else {
-                // counter = MINIMA to me — real on-chain check of the maker's lock
+                // counter = mxUSDT to me — real on-chain check of the maker's lock
                 if (cpMin != null) {
-                    L.add("• Counterparty MINIMA leg: FOUND " + cpMin.optString("amount", "?") + " MINIMA — "
+                    L.add("• Counterparty mxUSDT leg: FOUND " + cpMin.optString("amount", "?") + " mxUSDT — "
                             + (secretKnown ? "claimable now (claiming on the next poll)" : "waiting for the secret"));
                 } else {
-                    L.add("• Counterparty MINIMA leg: NOT FOUND yet — the maker hasn't locked MINIMA (or it's <2 confirmations old).");
+                    L.add("• Counterparty mxUSDT leg: NOT FOUND yet — the maker hasn't locked mxUSDT (or it's <2 confirmations old).");
                 }
             }
 
@@ -478,7 +478,7 @@ public final class SwapEngine {
         for (String h : pendingSecretHashes()) {
             minima.scanNotifySecret(h, NOTIFY_SCAN_DEPTH, coins -> harvestNotifySecrets(coins), e -> {});
         }
-        // CLAIM discovery — find each counter MINIMA leg I'm owed BY ITS HASHLOCK (reliable), not via
+        // CLAIM discovery — find each counter mxUSDT leg I'm owed BY ITS HASHLOCK (reliable), not via
         // relevant:true (which can miss a coin I only RECEIVE — the second-leg-of-a-sweep bug). checkCanSwapCoin's
         // own guards (secret-known, haveCollect, inflight, amountTokenOk) are unchanged.
         for (String h : pendingClaimMinimaHashes()) {
@@ -488,14 +488,14 @@ public final class SwapEngine {
                     JSONObject coin = coins.optJSONObject(i);
                     if (coin == null) continue;
                     if (isMyPublishKey(MinimaHtlc.stateAt(coin, 4)) && sameHash(MinimaHtlc.stateAt(coin, 5), hh))
-                        checkCanSwapCoin(coin, block);      // a MINIMA leg locked to me — claim it (I hold the secret)
+                        checkCanSwapCoin(coin, block);      // a mxUSDT leg locked to me — claim it (I hold the secret)
                 }
             }, e -> {});
         }
         // RESPONDER (incoming sell-take → lock ETH counter-leg) + REFUND (my expired coins) discovery — via a
         // state-filter scan bounded to MY key (owner state[0] or receiver state[4]): reliable like the per-hash
         // scans AND bounded like the old relevant:true, so it adds no unbounded global-address reply. coinage:2
-        // STAYS: the maker commits real USDT against a taker's MINIMA lock, so it must be ≥2-conf (reorg guard).
+        // STAYS: the maker commits real USDT against a taker's mxUSDT lock, so it must be ≥2-conf (reorg guard).
         minima.scanMyHtlcByKey(myMinimaPk, 2, HTLC_SCAN_DEPTH, coins -> {
             for (int i = 0; i < coins.length(); i++) {
                 JSONObject coin = coins.optJSONObject(i);
@@ -513,12 +513,12 @@ public final class SwapEngine {
         }, e -> {});
     }
 
-    /** Hashes of active swaps where I must CLAIM a MINIMA counter-leg (my own leg is the ETH one): I hold the
+    /** Hashes of active swaps where I must CLAIM a mxUSDT counter-leg (my own leg is the ETH one): I hold the
      *  secret and haven't collected yet. Drives the per-hash counter-leg discovery in runMinimaChecks. */
     private java.util.List<String> pendingClaimMinimaHashes() {
         java.util.List<String> out = new java.util.ArrayList<>();
         for (SwapDb.Swap s : db.allSwaps()) {
-            if (s == null || s.hash == null || s.myLegIsMinima) continue;   // my leg is ETH → I claim the MINIMA leg
+            if (s == null || s.hash == null || s.myLegIsMinima) continue;   // my leg is ETH → I claim the mxUSDT leg
             if (SwapDb.ST_COMPLETE.equals(s.status) || SwapDb.ST_REFUNDED.equals(s.status)
                     || SwapDb.ST_ERROR.equals(s.status)) continue;
             if (db.getSecret(s.hash) != null && !db.haveCollect(s.hash)) out.add(s.hash);
@@ -548,7 +548,7 @@ public final class SwapEngine {
                 @Override public void ok(String txpowid) {
                     db.logEvent(hash, SwapDb.EV_COLLECT, "minima", coin.optString("amount", ""), txpowid);
                     db.setSwapStatus(hash, SwapDb.ST_COMPLETE);
-                    notifier.notify("Swap complete", "Claimed " + coin.optString("amount", "") + " MINIMA");
+                    notifier.notify("Swap complete", "Claimed " + coin.optString("amount", "") + " mxUSDT");
                     notifier.onSwapsChanged();
                     inflight.remove("claimM:" + hash);
                 }
@@ -557,7 +557,7 @@ public final class SwapEngine {
             return;
         }
 
-        // I don't know the secret → I'm a MINIMA→ERC20 responder; lock the ETH counter-leg.
+        // I don't know the secret → I'm a mxUSDT→ERC20 responder; lock the ETH counter-leg.
         if (db.haveSentCounterParty(hash)) return;
         if (timelock - block < CP_BLOCKS_CHECK) return;                    // first leg too close to expiry
         if ("TRUE".equals(MinimaHtlc.stateAt(coin, 7))) {
@@ -579,7 +579,7 @@ public final class SwapEngine {
             @Override public void ok(String txpowid) {
                 db.logEvent(hash, SwapDb.EV_EXPIRED, "minima", coin.optString("amount", ""), txpowid);
                 db.setSwapStatus(hash, SwapDb.ST_REFUNDED);
-                notifier.notify("Swap refunded", "Timelock passed — reclaimed your MINIMA");
+                notifier.notify("Swap refunded", "Timelock passed — reclaimed your mxUSDT");
                 notifier.onSwapsChanged();
                 inflight.remove("refundM:" + hash);
             }
@@ -587,7 +587,7 @@ public final class SwapEngine {
         });
     }
 
-    /** [io] lock the ETH counter-leg for a MINIMA→ERC20 swap I'm responding to (now+1800s). */
+    /** [io] lock the ETH counter-leg for a mxUSDT→ERC20 swap I'm responding to (now+1800s). */
     private void lockEthCounterLeg(JSONObject coin, String hash, String reqTokenAddr) {
         try {
             EthNet.Token token = net.tokenByAddress(reqTokenAddr);
@@ -595,7 +595,7 @@ public final class SwapEngine {
             Credentials creds = wallet.creds();
             EthHtlc eth = new EthHtlc(rpc, creds, net);
             String tokenHuman = MinimaHtlc.stateAt(coin, 1);               // ERC20 amount the maker requested
-            String reqMinimaHuman = coin.optString("amount", "0");        // MINIMA they locked
+            String reqMinimaHuman = coin.optString("amount", "0");        // mxUSDT they locked
             String receiverEth = MinimaHtlc.stateAt(coin, 6);             // maker's ETH address (ownereth)
             BigInteger sellRaw = parseUnits(tokenHuman, token.decimals);
             BigInteger reqRaw = parseUnits(reqMinimaHuman, 18);
@@ -606,7 +606,7 @@ public final class SwapEngine {
             // genuine pre-mine failure still retries; a mined-but-lost lock is dup-guarded by the contract.
             ui.post(() -> {
                 SwapDb.Swap s = baseSwap(hash, "RESPONDER", "MINIMA_TO_ERC20",
-                        token.symbol, tokenHuman, "MINIMA", reqMinimaHuman, receiverEth);
+                        token.symbol, tokenHuman, "mxUSDT", reqMinimaHuman, receiverEth);
                 s.myTimelock = timelock; s.myLegIsMinima = false; s.contractId = EthHtlc.contractId(hash);
                 s.status = SwapDb.ST_LOCKED;
                 db.upsertSwap(s);
@@ -668,14 +668,14 @@ public final class SwapEngine {
 
         // BUY handshake (free-RPC-safe): a buyer told us the hashlock of a USDT lock addressed to us. Find it by
         // deterministic contractId via getContract (no eth_getLogs) and run the normal responder path (lock the
-        // MINIMA counter-leg). Once it becomes a known swap, the loop above + the secondary path take over.
+        // mxUSDT counter-leg). Once it becomes a known swap, the loop above + the secondary path take over.
         for (String hash : new java.util.ArrayList<>(incoming)) {
             if (processIncomingBuy(eth, myEth, hash, minimaBlock)) incoming.remove(hash);
         }
 
-        // SECONDARY (best-effort): eth_getLogs to discover a brand-new incoming ERC20→MINIMA lock whose
+        // SECONDARY (best-effort): eth_getLogs to discover a brand-new incoming ERC20→mxUSDT lock whose
         // hashlock we don't know yet (the only case getContract can't cover). Needs an archive RPC; silently
-        // skipped if the endpoint rejects eth_getLogs, so the sell-MINIMA path keeps working on free nodes.
+        // skipped if the endpoint rejects eth_getLogs, so the sell-mxUSDT path keeps working on free nodes.
         try {
             long ethBlock = rpc.blockNumber().longValue();
             long cap = Math.max(0, ethBlock - ETH_SCAN_CAP);
@@ -689,7 +689,7 @@ public final class SwapEngine {
     }
 
     /** Process ONE announced buy hashlock's ETH leg: if the taker's USDT lock is visible + addressed to me, run the
-     *  responder path (lock the MINIMA counter-leg). Shared by the runEthChecks incoming loop and the checkBuyNow
+     *  responder path (lock the mxUSDT counter-leg). Shared by the runEthChecks incoming loop and the checkBuyNow
      *  fast-path. Returns true if the hash is terminal/handled and can be dropped from {@code incoming}. */
     private boolean processIncomingBuy(EthHtlc eth, String myEth, String hash, int minimaBlock) {
         if (db.getSwap(hash) != null || db.haveSentCounterParty(hash)) return true;   // already known — drop
@@ -816,11 +816,11 @@ public final class SwapEngine {
             return;
         }
 
-        // I don't know the secret → I'm an ERC20→MINIMA responder; lock the MINIMA counter-leg.
+        // I don't know the secret → I'm an ERC20→mxUSDT responder; lock the mxUSDT counter-leg.
         if (db.haveSentCounterParty(hash)) return;
         // Persistent dedup (survives a restart / a lost txnpost response that the in-memory CP_LOCKING can't):
         // lockMinimaCounterLeg records the swap row BEFORE broadcast, so a row here means this hash is already
-        // being (or was) locked — never re-lock it (the MINIMA leg has no on-chain hash-uniqueness).
+        // being (or was) locked — never re-lock it (the mxUSDT leg has no on-chain hash-uniqueness).
         if (db.getSwap(hash) != null) return;
         if (c.timelock - nowUnix() < CP_SECS_CHECK) { if (!c.otc) declineNote(hash, "their USDT lock is too close to its timeout"); return; }
         if (c.otc) {
@@ -870,11 +870,11 @@ public final class SwapEngine {
         } catch (Exception ignore) {}
     }
 
-    /** Lock the MINIMA counter-leg for an ERC20→MINIMA swap I'm responding to (block+36). */
+    /** Lock the mxUSDT counter-leg for an ERC20→mxUSDT swap I'm responding to (block+36). */
     private void lockMinimaCounterLeg(EthHtlc.Contract c, int minimaBlock) {
         final String hash = c.hashlock;
         final int timelock = minimaBlock + CP_BLOCKS;
-        final String reqMinimaHuman = EthWallet.format(c.requestAmount, 18, 18);   // MINIMA they want from me
+        final String reqMinimaHuman = EthWallet.format(c.requestAmount, 18, 18);   // mxUSDT they want from me
         final String receiverPubkey = c.minimaPublicKey;                           // initiator's Minima pubkey
         ui.post(() -> minima.myFreeCoins(coins -> {
             // Gather DISTINCT confirmed coins totalling ≥ the lock amount (largest-first → fewest inputs), skipping
@@ -906,19 +906,19 @@ public final class SwapEngine {
             if (pickIds.isEmpty()) {   // can't cover `need` right now — DON'T hang silently; tell the LP why
                 releaseCpLeg(hash); inflight.remove("cpMin:" + hash);
                 declineCpNote(hash, freeTotal.compareTo(need) < 0
-                        ? "Can't fill deal — need " + reqMinimaHuman + " MINIMA, only " + freeTotal.toPlainString() + " free"
-                        : "MINIMA too fragmented to lock " + reqMinimaHuman + " in one tx — consolidate your coins");
+                        ? "Can't fill deal — need " + reqMinimaHuman + " mxUSDT, only " + freeTotal.toPlainString() + " free"
+                        : "mxUSDT too fragmented to lock " + reqMinimaHuman + " in one tx — consolidate your coins");
                 return;
             }
             final String totalSel = pickSumTmp.toPlainString();
             // RECORD-BEFORE-BROADCAST (mirrors lockEthCounterLeg's Fix D): persist the swap row NOW, so a process
             // kill or a lost txnpost response between broadcast and ok() can't re-lock this hash on restart. The
-            // row (gated in checkCanCollectEth via getSwap!=null) is the only restart-proof dedup the MINIMA leg
+            // row (gated in checkCanCollectEth via getSwap!=null) is the only restart-proof dedup the mxUSDT leg
             // has (no on-chain hash-uniqueness). EV_CPSENT stays AFTER (→ haveSentCounterParty).
             EthNet.Token tk = net.tokenByAddress(c.tokenContract);
             String sym = tk == null ? "token" : tk.symbol;
             SwapDb.Swap s = baseSwap(hash, "RESPONDER", "ERC20_TO_MINIMA",
-                    "MINIMA", reqMinimaHuman, sym, EthWallet.format(c.amount, decimalsOf(c.tokenContract), 18),
+                    "mxUSDT", reqMinimaHuman, sym, EthWallet.format(c.amount, decimalsOf(c.tokenContract), 18),
                     receiverPubkey);
             s.myTimelock = timelock; s.myLegIsMinima = true; s.contractId = c.contractId;
             s.status = SwapDb.ST_LOCKED;
@@ -928,7 +928,7 @@ public final class SwapEngine {
                     myEth(), hash, timelock, "FALSE", new MinimaHtlc.PostCb() {
                 @Override public void ok(String txpowid) {
                     db.logEvent(hash, SwapDb.EV_CPSENT, "minima", reqMinimaHuman, txpowid);
-                    notifier.notify("Locked your MINIMA", "Waiting for the counterparty to reveal the secret");
+                    notifier.notify("Locked your mxUSDT", "Waiting for the counterparty to reveal the secret");
                     notifier.onSwapsChanged();
                     inflight.remove("cpMin:" + hash);
                     // keep cpInFlight[hash] reserved until the lock CONFIRMS (freed in runEthChecks) — holds the coin
@@ -950,16 +950,16 @@ public final class SwapEngine {
     private static boolean validPos(double d) { return !Double.isNaN(d) && !Double.isInfinite(d) && d > 0; }
 
     /**
-     * Responder guard when the taker is SELLING MINIMA to me (they locked MINIMA wanting USDT). I am BUYING
-     * MINIMA, so I pay one of my BID prices (USDT per MINIMA). I auto-lock only if the pair is enabled, the
-     * MINIMA I'd receive meets my minimum, and it fits SOME enabled BID tranche — the take amount is within
-     * that tranche's cap AND the USDT I'd pay is ≤ (MINIMA received × tranche price). Per-take cap only; no
+     * Responder guard when the taker is SELLING mxUSDT to me (they locked mxUSDT wanting USDT). I am BUYING
+     * mxUSDT, so I pay one of my BID prices (USDT per mxUSDT). I auto-lock only if the pair is enabled, the
+     * mxUSDT I'd receive meets my minimum, and it fits SOME enabled BID tranche — the take amount is within
+     * that tranche's cap AND the USDT I'd pay is ≤ (mxUSDT received × tranche price). Per-take cap only; no
      * cross-take decrement (my real balance is the hard limit, enforced at the lock step).
      */
     private boolean acceptTakerSellMinima(JSONObject coin, String reqTokenAddr) {
         Order.Pair p = pairFor(reqTokenAddr);
         if (p == null || !p.enable) return false;
-        BigDecimal recvMinima = dec(coin.optString("amount", "0"));   // MINIMA the taker locked, I receive
+        BigDecimal recvMinima = dec(coin.optString("amount", "0"));   // mxUSDT the taker locked, I receive
         BigDecimal giveUsdt = dec(MinimaHtlc.stateAt(coin, 1));       // USDT they requested, I'd pay
         if (recvMinima.signum() <= 0) return false;
         if (validPos(p.min) && recvMinima.compareTo(BigDecimal.valueOf(p.min)) < 0) return false;   // min>0 = floor; min≤0/NaN = no floor (0.8.2 parity)
@@ -974,15 +974,15 @@ public final class SwapEngine {
     }
 
     /**
-     * Responder guard when the taker is BUYING MINIMA from me (they locked USDT wanting MINIMA). I am SELLING
-     * MINIMA, so I get one of my ASK prices. I auto-lock only if the pair is enabled, the MINIMA I'd give meets
+     * Responder guard when the taker is BUYING mxUSDT from me (they locked USDT wanting mxUSDT). I am SELLING
+     * mxUSDT, so I get one of my ASK prices. I auto-lock only if the pair is enabled, the mxUSDT I'd give meets
      * my minimum, and it fits SOME enabled ASK tranche — within that tranche's cap AND the USDT I'd receive is
-     * ≥ (MINIMA given × tranche price).
+     * ≥ (mxUSDT given × tranche price).
      */
     private boolean acceptTakerBuyMinima(EthHtlc.Contract c) {
         Order.Pair p = pairFor(c.tokenContract);
         if (p == null || !p.enable) return false;
-        BigDecimal giveMinima = dec(EthWallet.format(c.requestAmount, 18, 18));            // MINIMA I'd give
+        BigDecimal giveMinima = dec(EthWallet.format(c.requestAmount, 18, 18));            // mxUSDT I'd give
         BigDecimal recvUsdt = dec(EthWallet.format(c.amount, decimalsOf(c.tokenContract), 18)); // USDT I'd receive
         if (giveMinima.signum() <= 0) return false;
         if (validPos(p.min) && giveMinima.compareTo(BigDecimal.valueOf(p.min)) < 0) return false;   // min>0 = floor; min≤0/NaN = no floor (0.8.2 parity)
@@ -1018,38 +1018,38 @@ public final class SwapEngine {
     private static boolean approxEq(BigDecimal a, BigDecimal b) {
         if (a == null || b == null) return false;
         // Tolerance covers USDT's 6-dp truncation of amount×price (≤1e-6); ~1e-5 absolute caps any discrepancy at
-        // a negligible fraction of a cent / a MINIMA while never rejecting a correctly-rounded on-chain lock.
+        // a negligible fraction of a cent / a mxUSDT while never rejecting a correctly-rounded on-chain lock.
         return a.subtract(b).abs().compareTo(new BigDecimal("0.00001")) <= 0;
     }
 
-    /** Verify an incoming ERC20 lock (instigator BUYS MINIMA, I'm the LP selling) EXACTLY matches the agreed deal
-     *  before I lock the MINIMA counter-leg: the USDT must be addressed to me, the MINIMA must go to the agreed
+    /** Verify an incoming ERC20 lock (instigator BUYS mxUSDT, I'm the LP selling) EXACTLY matches the agreed deal
+     *  before I lock the mxUSDT counter-leg: the USDT must be addressed to me, the mxUSDT must go to the agreed
      *  counterparty, and both amounts must equal the negotiated terms. */
     private boolean otcVerifyBuy(EthHtlc.Contract c, OtcDb.Deal d) {
         if (!OtcOffer.LP_SELLS_MINIMA.equals(d.side)) return false;
         EthNet.Token usdt = net.token("USDT");
         if (usdt == null || c.tokenContract == null || !c.tokenContract.equalsIgnoreCase(usdt.address)) return false;  // MUST settle in real USDT
         if (c.receiver == null || !c.receiver.equalsIgnoreCase(myEth())) return false;                       // USDT to me
-        if (!keyEq(c.minimaPublicKey, d.peerMinimaPk)) return false;                                         // MINIMA to the agreed peer
+        if (!keyEq(c.minimaPublicKey, d.peerMinimaPk)) return false;                                         // mxUSDT to the agreed peer
         BigDecimal wantMinima = dec(d.amount), wantUsdt = dec(d.amount).multiply(dec(d.price));
-        BigDecimal gotMinima = dec(EthWallet.format(c.requestAmount, 18, 18));                        // MINIMA they request = what I lock
+        BigDecimal gotMinima = dec(EthWallet.format(c.requestAmount, 18, 18));                        // mxUSDT they request = what I lock
         BigDecimal gotUsdt = dec(EthWallet.format(c.amount, decimalsOf(c.tokenContract), 18));        // USDT they locked
         return approxEq(gotMinima, wantMinima) && approxEq(gotUsdt, wantUsdt);
     }
 
-    /** Verify an incoming Minima lock (instigator SELLS MINIMA, I'm the LP buying) EXACTLY matches the agreed deal
+    /** Verify an incoming Minima lock (instigator SELLS mxUSDT, I'm the LP buying) EXACTLY matches the agreed deal
      *  before I lock the USDT counter-leg: I must be the coin receiver, the USDT must go to the agreed eth, the
      *  token must be the agreed USDT, and both amounts must equal the negotiated terms. */
     private boolean otcVerifySell(JSONObject coin, OtcDb.Deal d, String reqTokenAddr) {
         if (!OtcOffer.LP_BUYS_MINIMA.equals(d.side)) return false;
         if (!MinimaHtlc.USDT_TOKENID.equalsIgnoreCase(coin.optString("tokenid", "0x00"))) return false;  // mxUSDT only
-        if (!keyEq(MinimaHtlc.stateAt(coin, 4), myMinimaPk)) return false;                            // MINIMA to me
+        if (!keyEq(MinimaHtlc.stateAt(coin, 4), myMinimaPk)) return false;                            // mxUSDT to me
         String payEth = MinimaHtlc.stateAt(coin, 6);
         if (payEth == null || !payEth.equalsIgnoreCase(d.peerEthAddr)) return false;                  // I'll pay USDT to the agreed eth
         EthNet.Token usdt = net.token("USDT");
         if (usdt == null || reqTokenAddr == null || !reqTokenAddr.equalsIgnoreCase(usdt.address)) return false;  // agreed token
         BigDecimal wantMinima = dec(d.amount), wantUsdt = dec(d.amount).multiply(dec(d.price));
-        BigDecimal gotMinima = dec(coin.optString("amount", "0"));                    // MINIMA they locked
+        BigDecimal gotMinima = dec(coin.optString("amount", "0"));                    // mxUSDT they locked
         BigDecimal gotUsdt = dec(MinimaHtlc.stateAt(coin, 1));                        // USDT they request = what I lock
         return approxEq(gotMinima, wantMinima) && approxEq(gotUsdt, wantUsdt);
     }
@@ -1076,7 +1076,7 @@ public final class SwapEngine {
 
     // ============================================================ secret harvesting (Minima notify)
 
-    /** Hashlocks of legs I locked as an ERC20→MINIMA responder that are still waiting for the revealed secret. */
+    /** Hashlocks of legs I locked as an ERC20→mxUSDT responder that are still waiting for the revealed secret. */
     private java.util.List<String> pendingSecretHashes() {
         java.util.List<String> out = new java.util.ArrayList<>();
         for (SwapDb.Swap s : db.allSwaps()) {

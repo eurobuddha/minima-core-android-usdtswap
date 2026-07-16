@@ -17,12 +17,12 @@ import java.util.Map;
  * The maker signs the canonical JSON with their Ed25519 comms key; takers verify before trusting it.
  *
  * Since 0.9.0 a pair can carry a DEPTH LADDER — up to {@link #MAX_LEVELS} bid tranches and ask tranches,
- * each with its own price (USDT per MINIMA) and amount (MINIMA, the per-take cap). The legacy scalars
+ * each with its own price (USDT per mxUSDT) and amount (mxUSDT, the per-take cap). The legacy scalars
  * stay populated with the ladder's best prices so 0.8.x clients keep seeing a valid single-level quote
  * (their fromJson reads buy/sell/min via no-default optDouble — a missing key would be NaN and poison them).
  *
  * NAMING INVERSION (historical, wire-compatible — carry it everywhere): the scalar {@code buy} is the
- * ASK (maker SELLS MINIMA, the higher price); {@code sell} is the BID (maker BUYS MINIMA, the lower price).
+ * ASK (maker SELLS mxUSDT, the higher price); {@code sell} is the BID (maker BUYS mxUSDT, the lower price).
  * The ladder lists use honest names: {@code asks} pairs with {@code buy}, {@code bids} pairs with {@code sell}.
  */
 public final class Order {
@@ -36,7 +36,7 @@ public final class Order {
     public String ethAddress;        // maker's ETH receiving address
     public String commsPublicId;     // 0x + boxPk + signPk — used to seal the handshake to the maker
     public long ts;                  // maker's timestamp (ms) — freshest order per signer wins
-    public double minimaAvail;       // maker's available MINIMA at publish time (liquidity, ask side)
+    public double minimaAvail;       // maker's available mxUSDT at publish time (liquidity, ask side)
     public double usdtAvail;         // maker's available USDT at publish time (liquidity, bid side)
     public final Map<String, Pair> pairs = new LinkedHashMap<>();   // "USDT" -> rate
 
@@ -44,21 +44,21 @@ public final class Order {
     public String signerPk;          // 0x + Ed25519 pk recovered from the coin (verified signer)
     public String coinid;            // source coin id (dedup / expiry)
 
-    /** One ladder tranche: a price and the maximum MINIMA a single take may fill at it. */
+    /** One ladder tranche: a price and the maximum mxUSDT a single take may fill at it. */
     public static final class Level {
-        public double price;    // USDT per MINIMA
-        public double amount;   // MINIMA at this level (per-take cap)
+        public double price;    // USDT per mxUSDT
+        public double amount;   // mxUSDT at this level (per-take cap)
         public Level() {}
         public Level(double price, double amount) { this.price = price; this.amount = amount; }
     }
 
     public static final class Pair {
         public boolean enable;
-        public double buy;     // legacy scalar = ASK: price where the maker SELLS MINIMA (higher)
-        public double sell;    // legacy scalar = BID: price where the maker BUYS MINIMA (lower)
-        public double min;     // minimum MINIMA per trade (global, applies to every level)
-        public final List<Level> bids = new ArrayList<>();   // maker BUYS MINIMA — sorted price DESC (best first)
-        public final List<Level> asks = new ArrayList<>();   // maker SELLS MINIMA — sorted price ASC (best first)
+        public double buy;     // legacy scalar = ASK: price where the maker SELLS mxUSDT (higher)
+        public double sell;    // legacy scalar = BID: price where the maker BUYS mxUSDT (lower)
+        public double min;     // minimum mxUSDT per trade (global, applies to every level)
+        public final List<Level> bids = new ArrayList<>();   // maker BUYS mxUSDT — sorted price DESC (best first)
+        public final List<Level> asks = new ArrayList<>();   // maker SELLS mxUSDT — sorted price ASC (best first)
         public Pair() {}
         public Pair(boolean enable, double buy, double sell, double min) {
             this.enable = enable; this.buy = buy; this.sell = sell; this.min = min;
@@ -101,7 +101,7 @@ public final class Order {
     }
 
     /**
-     * The maker's bid levels (maker BUYS MINIMA), or a single synthetic level from the legacy scalar for
+     * The maker's bid levels (maker BUYS mxUSDT), or a single synthetic level from the legacy scalar for
      * pre-ladder orders — so display/take code has ONE uniform per-level path. Synthetic size = the
      * balance-derived formula the old UI used (usdtAvail / price).
      */
@@ -117,7 +117,7 @@ public final class Order {
         return Collections.emptyList();
     }
 
-    /** The maker's ask levels (maker SELLS MINIMA), or a synthetic single level (size = minimaAvail). */
+    /** The maker's ask levels (maker SELLS mxUSDT), or a synthetic single level (size = minimaAvail). */
     public List<Level> effectiveAsks(String sym) {
         Pair p = pairs.get(sym);
         if (p == null || !p.enable) return Collections.emptyList();

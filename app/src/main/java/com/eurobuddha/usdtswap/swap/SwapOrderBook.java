@@ -61,7 +61,7 @@ public final class SwapOrderBook {
             JSONObject extra = new JSONObject();
             extra.put("1", "0x" + Hex.to(id.signPk));
             extra.put("2", "0x" + Hex.to(sig));
-            CommsTransport.postBlob(node, ADDRESS, CommsTransport.MESSAGE_AMOUNT, CommsTransport.MINIMA,
+            CommsTransport.postBlob(node, ADDRESS, CommsTransport.MESSAGE_AMOUNT, CommsTransport.NATIVE,
                     Hex.to(msg), extra, cb);
         } catch (Exception e) {
             cb.onFailed("publish: " + e.getMessage());

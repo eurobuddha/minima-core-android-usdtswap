@@ -96,7 +96,7 @@ public class MainActivity extends AppCompatActivity {
     private static final long DISCOVERY_INTERVAL_MS = 30_000;   // fast, LIGHT handshake-discovery scan — the heavy poll stays 90s
     private static final long SWEEP_LEG_TIMEOUT_MS = 300_000;    // start-phase watchdog: lock never broadcasts (covers approve+lock)
     private static final long SWEEP_CONFIRM_WATCHDOG_MS = 300_000; // SELL confirm-phase watchdog: confirmMyLock hangs (> the try-budget below)
-    private static final long SWEEP_CONFIRM_INTERVAL_MS = 8_000; // SELL poll cadence while waiting for a leg's MINIMA lock to hit chain
+    private static final long SWEEP_CONFIRM_INTERVAL_MS = 8_000; // SELL poll cadence while waiting for a leg's mxUSDT lock to hit chain
     private static final int  SWEEP_CONFIRM_TRIES = 30;         // ~4 min budget (SELL-only) — a coinage:1 lock lands in ~1 block
     static final long REPUBLISH_INTERVAL_MS = 30 * 60_000;   // keep a published order live + fresh (bridge uses 30m)
     private static final long TERMINAL_GRACE_MS = 10 * 60_000;   // Activity-tab history: finished swaps auto-hide after this
@@ -131,7 +131,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String[] TAB_LABELS = {"Swap", "Wallet", "Activity", "Market", "OTC"};
     private int currentTab = TAB_SWAP;
     private final TextView[] tabPills = new TextView[5];
-    private boolean swapSell = true;    // Swap tab direction: true = Sell MINIMA, false = Buy MINIMA
+    private boolean swapSell = true;    // Swap tab direction: true = Sell mxUSDT, false = Buy mxUSDT
     private String swapAmount = "";     // Swap tab "you send" amount — persists across tree rebuilds
     private boolean swapInputFocused = false;   // suppress background render() while typing the swap amount
     private boolean swapSyncing = false;        // guard so the send/receive fields don't loop while syncing
@@ -192,7 +192,7 @@ public class MainActivity extends AppCompatActivity {
                 ensureDerivations();   // retry any derivation that failed transiently (was one-shot before)
             }
             if (sweepRun == null || !sweepRun.sell) {  // stand down only mid-SELL-sweep — a poll republish/claim
-                                                       // could re-select a sell leg's MINIMA coins. (A BUY sweep is
+                                                       // could re-select a sell leg's mxUSDT coins. (A BUY sweep is
                                                        // nonce-serialized, so the poller may run alongside it.)
                 // Re-arm the responder guard from the PERSISTED config on EVERY pass, BEFORE poll() — a
                 // cancel/edit (in either host) must reach this engine's guard (disabled pairs decline every
@@ -701,10 +701,10 @@ public class MainActivity extends AppCompatActivity {
         if (engine != null) engine.addIncomingHashlock(hash);
         if (isNew) {   // make the handshake visible — the buyer wants to know it landed
             // Act NOW — don't wait for the next ~90s poll. Stand down only mid-SELL-sweep (same as watchTick),
-            // since that path also selects MINIMA coins and a concurrent responder lock could double-select.
+            // since that path also selects mxUSDT coins and a concurrent responder lock could double-select.
             if (engine != null && (sweepRun == null || !sweepRun.sell)) engine.checkBuyNow(hash);
-            postNotification("Buy request received", "A buyer wants your MINIMA — finding their USDT lock, then locking.");
-            orderStatus = "↧ Buy request received — locking MINIMA for a buyer…"; render();
+            postNotification("Buy request received", "A buyer wants your mxUSDT — finding their USDT lock, then locking.");
+            orderStatus = "↧ Buy request received — locking mxUSDT for a buyer…"; render();
         }
         return isNew;
     }
@@ -940,8 +940,8 @@ public class MainActivity extends AppCompatActivity {
         box.setPadding(dp(20), dp(8), dp(20), dp(8));
 
         TextView hint = new TextView(this);
-        hint.setText("Your depth ladder for MINIMA / " + sym + "  (price = USDT per MINIMA):\n"
-                + "•  ASKS — where YOU SELL MINIMA (higher).   BIDS — where YOU BUY (lower).\n"
+        hint.setText("Your depth ladder for mxUSDT / " + sym + "  (price = USDT per mxUSDT):\n"
+                + "•  ASKS — where YOU SELL mxUSDT (higher).   BIDS — where YOU BUY (lower).\n"
                 + "•  Each level's amount is a per-take cap. Leave rows blank to skip them.\n"
                 + "•  Tip: make your best level your largest — old-app takers only see your best price.");
         hint.setTextColor(Design.DIM()); hint.setTextSize(12f); hint.setTypeface(Design.sans()); hint.setLineSpacing(dp(2), 1f); hint.setPadding(0, 0, 0, dp(10));
@@ -951,7 +951,7 @@ public class MainActivity extends AppCompatActivity {
         sw.setText("Enabled"); sw.setTextColor(Design.DIM()); sw.setChecked(p.enable);
         box.addView(sw);
 
-        // ---- auto-MM: peg the ladder to the live MEXC MINIMA/USDT market ----
+        // ---- auto-MM: peg the ladder to the live MEXC mxUSDT/USDT market ----
         box.addView(fieldLabel("AUTO MARKET-MAKE — PEG TO " + PriceOracle.SOURCE));
         final SwitchCompat pegSw = new SwitchCompat(this);
         pegSw.setText("Peg ladder to " + PriceOracle.SOURCE + " (auto-reprice)");
@@ -967,7 +967,7 @@ public class MainActivity extends AppCompatActivity {
         pegHint.setText("While pegged, the ladder regenerates around the " + PriceOracle.SOURCE + " mid (± step %, "
                 + "your size per level) at every publish, and re-publishes when the market moves ≥ your threshold. "
                 + "If the feed goes down your order is withdrawn for safety, then restored when it recovers. "
-                + PriceOracle.SOURCE + "'s MINIMA market is THIN — keep step % above its typical spread and "
+                + PriceOracle.SOURCE + "'s mxUSDT market is THIN — keep step % above its typical spread and "
                 + "level sizes small; you auto-trade at these prices.");
         pegHint.setTextColor(Design.DIM2()); pegHint.setTextSize(11f); pegHint.setTypeface(Design.sans());
         pegHint.setLineSpacing(dp(2), 1f); pegHint.setPadding(0, 0, 0, dp(4));
@@ -1004,10 +1004,10 @@ public class MainActivity extends AppCompatActivity {
         final double liveMinima = parseD(minimaBal, 0);
         final double liveUsdt = parseD(Util.tidyAmount(tokenBals.get("USDT")), 0);
 
-        // ASKS (maker sells MINIMA, higher) — laid out ORDER-BOOK style: highest (A6) at the top, best/lowest
+        // ASKS (maker sells mxUSDT, higher) — laid out ORDER-BOOK style: highest (A6) at the top, best/lowest
         // ask A1 at the BOTTOM adjacent to the bids, so the spread sits in the middle. askRows[] stays indexed
         // A1..A6 (A1 = best); only the visual insertion order is reversed.
-        TextView ah = new TextView(this); ah.setText("ASKS — you SELL MINIMA (higher price)");
+        TextView ah = new TextView(this); ah.setText("ASKS — you SELL mxUSDT (higher price)");
         ah.setTextColor(Design.RED()); ah.setTextSize(12.5f); ah.setTypeface(Design.sansBold()); ah.setLetterSpacing(0.03f); ah.setPadding(0, dp(12), 0, dp(2));
         box.addView(ah);
         final EditText[][] askRows = new EditText[Order.MAX_LEVELS][];
@@ -1018,8 +1018,8 @@ public class MainActivity extends AppCompatActivity {
             askRows[i] = numRow2(box, "A" + (i + 1), px, am, Design.RED());
         }
 
-        // BIDS (maker buys MINIMA, lower)
-        TextView bh = new TextView(this); bh.setText("BIDS — you BUY MINIMA (lower price)");
+        // BIDS (maker buys mxUSDT, lower)
+        TextView bh = new TextView(this); bh.setText("BIDS — you BUY mxUSDT (lower price)");
         bh.setTextColor(Design.IN()); bh.setTextSize(12.5f); bh.setTypeface(Design.sansBold()); bh.setLetterSpacing(0.03f); bh.setPadding(0, dp(12), 0, dp(2));
         box.addView(bh);
         final EditText[][] bidRows = new EditText[Order.MAX_LEVELS][];
@@ -1030,7 +1030,7 @@ public class MainActivity extends AppCompatActivity {
             bidRows[i] = numRow2(box, "B" + (i + 1), px, am, Design.IN());
         }
 
-        final EditText minE = numRow(box, "min MINIMA / trade", p.min);
+        final EditText minE = numRow(box, "min mxUSDT / trade", p.min);
 
         final TextView pv = new TextView(this); pv.setTextSize(12f); pv.setTypeface(Design.sans()); pv.setLineSpacing(dp(2), 1f); pv.setPadding(0, dp(10), 0, dp(2));
         box.addView(pv);
@@ -1231,7 +1231,7 @@ public class MainActivity extends AppCompatActivity {
         return e;
     }
 
-    /** A ladder tranche row: [label][price][amount MINIMA]. Blank fields (value ≤ 0) render empty = unused. */
+    /** A ladder tranche row: [label][price][amount mxUSDT]. Blank fields (value ≤ 0) render empty = unused. */
     private EditText[] numRow2(LinearLayout parent, String label, double price, double amount, int labelColor) {
         LinearLayout r = new LinearLayout(this);
         r.setOrientation(LinearLayout.HORIZONTAL); r.setGravity(Gravity.CENTER_VERTICAL); r.setPadding(0, dp(2), 0, dp(2));
@@ -1240,7 +1240,7 @@ public class MainActivity extends AppCompatActivity {
         pe.setHint("price"); pe.setHintTextColor(Design.DIM2());
         pe.setText(price > 0 ? trimSig(price) : ""); pe.setTextColor(Design.TEXT()); pe.setTextSize(14f); pe.setGravity(Gravity.END); pe.setTypeface(Design.mono());
         EditText ae = new EditText(this); decimalInput(ae);
-        ae.setHint("MINIMA"); ae.setHintTextColor(Design.DIM2());
+        ae.setHint("mxUSDT"); ae.setHintTextColor(Design.DIM2());
         ae.setText(amount > 0 ? trimSig(amount) : ""); ae.setTextColor(Design.TEXT()); ae.setTextSize(14f); ae.setGravity(Gravity.END); ae.setTypeface(Design.mono());
         TextView clr = new TextView(this); clr.setText("✕"); clr.setTextColor(Design.DIM2()); clr.setTextSize(15f);
         clr.setTypeface(Design.sans()); clr.setGravity(Gravity.CENTER); clr.setPadding(dp(8), dp(4), dp(2), dp(4));
@@ -1265,10 +1265,10 @@ public class MainActivity extends AppCompatActivity {
     // ---- take an order (guided swap start) ----
 
     /**
-     * Take a maker's order. We always trade MINIMA, priced in USDT (USDT per MINIMA). You enter a MINIMA
+     * Take a maker's order. We always trade mxUSDT, priced in USDT (USDT per mxUSDT). You enter a mxUSDT
      * amount; the USDT side is derived from the maker's price.
-     *   - Sell MINIMA → you give MINIMA, receive USDT at the maker's SELL price (the lower / bid).
-     *   - Buy MINIMA  → you give USDT, receive MINIMA at the maker's BUY price (the higher / ask).
+     *   - Sell mxUSDT → you give mxUSDT, receive USDT at the maker's SELL price (the lower / bid).
+     *   - Buy mxUSDT  → you give USDT, receive mxUSDT at the maker's BUY price (the higher / ask).
      */
     private void takeOrderDialog(Order maker, String symbol, boolean sellMinima, final double price, final double maxAmount) {
         if (price <= 0) return;
@@ -1279,15 +1279,15 @@ public class MainActivity extends AppCompatActivity {
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(dp(20), dp(12), dp(20), dp(4));
         TextView info = new TextView(this);
-        info.setText((sellMinima ? "Sell MINIMA → " + symbol : "Buy MINIMA ← " + symbol)
-                + "\nPrice: " + trim(price) + " " + symbol + " per MINIMA"
-                + "\nThis level: up to " + abbrev(maxAmount) + " MINIMA"
-                + (min > 0 ? "\nMin: " + trim(min) + " MINIMA" : ""));
+        info.setText((sellMinima ? "Sell mxUSDT → " + symbol : "Buy mxUSDT ← " + symbol)
+                + "\nPrice: " + trim(price) + " " + symbol + " per mxUSDT"
+                + "\nThis level: up to " + abbrev(maxAmount) + " mxUSDT"
+                + (min > 0 ? "\nMin: " + trim(min) + " mxUSDT" : ""));
         info.setTextColor(Design.DIM()); info.setTextSize(13f); info.setTypeface(Design.sans()); info.setLineSpacing(dp(3), 1f); info.setPadding(0, 0, 0, dp(10));
         box.addView(info);
 
         final EditText amt = new EditText(this);
-        amt.setHint("MINIMA to " + (sellMinima ? "sell" : "buy"));
+        amt.setHint("mxUSDT to " + (sellMinima ? "sell" : "buy"));
         decimalInput(amt);
         amt.setTextColor(Design.TEXT()); amt.setHintTextColor(Design.DIM2()); amt.setTextSize(16f); amt.setTypeface(Design.mono());
         box.addView(amt);
@@ -1303,17 +1303,17 @@ public class MainActivity extends AppCompatActivity {
 
         modalOpen = true;
         dialog()
-                .setTitle((sellMinima ? "Sell MINIMA" : "Buy MINIMA") + " · " + Util.shorten(maker.signerPk))
+                .setTitle((sellMinima ? "Sell mxUSDT" : "Buy mxUSDT") + " · " + Util.shorten(maker.signerPk))
                 .setView(box)
                 .setPositiveButton("Start swap", (d, w) -> {
                     String minima = amt.getText().toString().trim();
                     String usdt = computeUsdt(minima, price);
-                    if (usdt == null) { toast("Enter a valid MINIMA amount"); return; }
+                    if (usdt == null) { toast("Enter a valid mxUSDT amount"); return; }
                     // Client-side guards are UX-only — the maker's engine guard is authoritative — but catch the
                     // obvious auto-declines before locking any coins on-chain.
                     double m = parseD(minima, 0);
-                    if (m > maxAmount + 1e-9) { toast("This level takes up to " + abbrev(maxAmount) + " MINIMA — more will be auto-declined"); return; }
-                    if (min > 0 && m < min) { toast("Below the maker's minimum (" + trim(min) + " MINIMA)"); return; }
+                    if (m > maxAmount + 1e-9) { toast("This level takes up to " + abbrev(maxAmount) + " mxUSDT — more will be auto-declined"); return; }
+                    if (min > 0 && m < min) { toast("Below the maker's minimum (" + trim(min) + " mxUSDT)"); return; }
                     startSwap(maker, symbol, sellMinima, minima, usdt);
                 })
                 .setNegativeButton("Cancel", null)
@@ -1321,7 +1321,7 @@ public class MainActivity extends AppCompatActivity {
                 .show();
     }
 
-    /** USDT side for a MINIMA amount at a given price (USDT per MINIMA). */
+    /** USDT side for a mxUSDT amount at a given price (USDT per mxUSDT). */
     private String computeUsdt(String minimaAmount, double price) {
         try {
             BigDecimal m = new BigDecimal(minimaAmount.trim());
@@ -1350,10 +1350,10 @@ public class MainActivity extends AppCompatActivity {
      */
     private void startLeg(Order maker, String symbol, boolean sellMinima, String minima, String usdt, SwapEngine.StartCb legCb) {
         if (sellMinima) {
-            // give MINIMA (minima), receive USDT (usdt) → MINIMA→ERC20
+            // give mxUSDT (minima), receive USDT (usdt) → mxUSDT→ERC20
             engine.startMinimaToErc20(maker, minima, symbol, usdt, legCb);
         } else {
-            // give USDT (usdt), receive MINIMA (minima) → ERC20→MINIMA, then hand the maker our sealed hashlock.
+            // give USDT (usdt), receive mxUSDT (minima) → ERC20→mxUSDT, then hand the maker our sealed hashlock.
             engine.startErc20ToMinima(maker, symbol, usdt, minima, new SwapEngine.StartCb() {
                 @Override public void ok(String hash) {
                     legCb.ok(hash);
@@ -1372,18 +1372,18 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ---- sweep executor: BUY legs fire back-to-back on broadcast (EthTx nonce serializer keeps them ordered +
-    //      collision-free); SELL legs stay gated on each MINIMA lock confirming (no nonce for coin selection) ----
+    //      collision-free); SELL legs stay gated on each mxUSDT lock confirming (no nonce for coin selection) ----
 
     private void startSweep(SweepPlan plan) {
         if (plan == null || plan.legs.isEmpty()) return;
-        // A SELL sweep and an in-flight coin-split both pick MINIMA coins unpinned — if they'd collide, the sweep
+        // A SELL sweep and an in-flight coin-split both pick mxUSDT coins unpinned — if they'd collide, the sweep
         // could lose leg 1 and abort. Splits finish within ~a block; ask the user to retry rather than risk it.
         if (plan.sell && engine != null && engine.isSplitting()) {
             toast("Preparing coins for your order ladder — try the sell again in a moment.");
             return;
         }
         sweepRun = plan; sweepIdx = 0; sweepOk = 0;
-        // Only a SELL sweep must stand the pollers down — its unpinned MINIMA locks could double-select coins.
+        // Only a SELL sweep must stand the pollers down — its unpinned mxUSDT locks could double-select coins.
         // A BUY sweep is nonce-serialized (EthTx), so the poll loop may keep claiming counter-legs alongside it.
         SWEEP_ACTIVE = plan.sell;
         fireSweepLeg();
@@ -1435,7 +1435,7 @@ public class MainActivity extends AppCompatActivity {
                     fireSweepLeg();
                     return;
                 }
-                // SELL: MINIMA coin selection has no nonce — the next lock could re-select this leg's coins, so
+                // SELL: mxUSDT coin selection has no nonce — the next lock could re-select this leg's coins, so
                 // wait until this lock's inputs are spent on-chain (confirmMyLock, coinage:1) before advancing.
                 // Re-arm the watchdog for the CONFIRM phase — a hung confirmMyLock must still release SWEEP_ACTIVE.
                 if (sweepWatchdog != null) ui.removeCallbacks(sweepWatchdog);
@@ -1636,7 +1636,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void renderSwapTab(LinearLayout col) {
         TextView h = new TextView(this);
-        h.setText("Swap MINIMA ⇄ USDT");
+        h.setText("Swap mxUSDT ⇄ USDT");
         h.setTextColor(Design.TEXT()); h.setTextSize(18f); h.setTypeface(Design.sansBold());
         h.setPadding(0, dp(4), 0, dp(2));
         col.addView(h);
@@ -1648,8 +1648,8 @@ public class MainActivity extends AppCompatActivity {
         // direction toggle (segmented)
         LinearLayout seg = new LinearLayout(this);
         seg.setOrientation(LinearLayout.HORIZONTAL);
-        TextView sellTab = segTab("Sell MINIMA", swapSell, () -> { swapInputFocused = false; if (!swapSell) { swapSell = true; } render(); });
-        TextView buyTab = segTab("Buy MINIMA", !swapSell, () -> { swapInputFocused = false; if (swapSell) { swapSell = false; } render(); });
+        TextView sellTab = segTab("Sell mxUSDT", swapSell, () -> { swapInputFocused = false; if (!swapSell) { swapSell = true; } render(); });
+        TextView buyTab = segTab("Buy mxUSDT", !swapSell, () -> { swapInputFocused = false; if (swapSell) { swapSell = false; } render(); });
         LinearLayout.LayoutParams sp1 = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f); sp1.rightMargin = dp(5);
         LinearLayout.LayoutParams sp2 = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f); sp2.leftMargin = dp(5);
         seg.addView(sellTab, sp1); seg.addView(buyTab, sp2);
@@ -1691,7 +1691,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // ---- faithful dual-amount card: You send / ⇅ / You receive ----
-        final boolean sellMinima = swapSell;   // send=MINIMA,recv=USDT when selling; send=USDT,recv=MINIMA when buying
+        final boolean sellMinima = swapSell;   // send=mxUSDT,recv=USDT when selling; send=USDT,recv=mxUSDT when buying
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setBackground(Design.card(this, 18));
@@ -1735,7 +1735,7 @@ public class MainActivity extends AppCompatActivity {
         flipRow.addView(l1, llL); flipRow.addView(flip, llF); flipRow.addView(l2, llR);
         card.addView(flipRow);
 
-        // YOU RECEIVE — editable too, so you can enter either side (MINIMA or USDT)
+        // YOU RECEIVE — editable too, so you can enter either side (mxUSDT or USDT)
         card.addView(fieldLabel("YOU RECEIVE (estimate)"));
         LinearLayout recvRow = new LinearLayout(this);
         recvRow.setOrientation(LinearLayout.HORIZONTAL); recvRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -1772,13 +1772,13 @@ public class MainActivity extends AppCompatActivity {
         double bestCap = sellMinima ? best.bidCap : best.askCap;
         double depth = sweepDepthMinima(sellMinima);
         TextView bp = new TextView(this);
-        bp.setText("Best price " + fmtPrice(price) + " USDT/MINIMA  ·  up to ~" + abbrev(bestCap) + " at best"
+        bp.setText("Best price " + fmtPrice(price) + " USDT/mxUSDT  ·  up to ~" + abbrev(bestCap) + " at best"
                 + (depth > bestCap + 1e-9 ? ", ~" + abbrev(depth) + " across the book" : "")
                 + (sellMinima ? "" : "  ·  ETH gas per part"));
         bp.setTextColor(Design.DIM2()); bp.setTextSize(11.5f); bp.setTypeface(Design.sans()); bp.setPadding(0, dp(12), 0, 0);
         card.addView(bp);
 
-        // BUY slippage tolerance — the most above best you'll pay per MINIMA when filling across deeper levels.
+        // BUY slippage tolerance — the most above best you'll pay per mxUSDT when filling across deeper levels.
         if (!sellMinima) {
             double curPct = buySlippage() * 100;
             boolean is2 = Math.abs(curPct - 2) < 0.001, is42 = Math.abs(curPct - 4.2) < 0.001;
@@ -1797,7 +1797,7 @@ public class MainActivity extends AppCompatActivity {
         TextView cta = button("Review swap");
         LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         blp.topMargin = dp(16); cta.setLayoutParams(blp);
-        cta.setOnClickListener(v -> onSwapCta(sellMinima, (sellMinima ? amt : recv).getText().toString().trim(), best));   // MINIMA-side field
+        cta.setOnClickListener(v -> onSwapCta(sellMinima, (sellMinima ? amt : recv).getText().toString().trim(), best));   // mxUSDT-side field
         card.addView(cta);
 
         col.addView(card);
@@ -1835,7 +1835,7 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(dp(34), dp(34)); clp.rightMargin = dp(10);
         chip.addView(circle, clp);
         LinearLayout colc = new LinearLayout(this); colc.setOrientation(LinearLayout.VERTICAL);
-        TextView tk = new TextView(this); tk.setText(minima ? "MINIMA" : "USDT"); tk.setTextColor(Design.TEXT()); tk.setTextSize(15f); tk.setTypeface(Design.sansBold());
+        TextView tk = new TextView(this); tk.setText(minima ? "mxUSDT" : "USDT"); tk.setTextColor(Design.TEXT()); tk.setTextSize(15f); tk.setTypeface(Design.sansBold());
         TextView sub = new TextView(this);
         String usdt = tokenBals.get("USDT");
         sub.setText(minima ? ("avail " + abbrev(parseD(minimaBal, 0))) : ("avail " + (usdt != null ? Util.tidyAmount(usdt) : "—")));
@@ -1845,7 +1845,7 @@ public class MainActivity extends AppCompatActivity {
         return chip;
     }
 
-    /** MINIMA you'd receive for a USDT amount at a given price (USDT per MINIMA). */
+    /** mxUSDT you'd receive for a USDT amount at a given price (USDT per mxUSDT). */
     private String computeMinima(String usdtAmount, double price) {
         try {
             BigDecimal u = new BigDecimal(usdtAmount.trim());
@@ -1865,16 +1865,16 @@ public class MainActivity extends AppCompatActivity {
         if (minima == null || usdt == null) { toast("Enter a valid amount"); return; }
         // UX-only cap check against the best level (the maker's guard is authoritative) — stop over-sizing before a lock.
         if (maxAmount > 0 && parseD(minima, 0) > maxAmount + 1e-9) {
-            toast("Best level takes up to " + abbrev(maxAmount) + " MINIMA — reduce the amount"); return;
+            toast("Best level takes up to " + abbrev(maxAmount) + " mxUSDT — reduce the amount"); return;
         }
         String msg = sellMinima
-                ? ("Sell  " + minima + " MINIMA\nReceive  ≈ " + usdt + " USDT\n\nBest price " + fmtPrice(price) + " USDT/MINIMA\nCounterparty  " + Util.shorten(maker.signerPk)
-                    + "\n\nThis locks your MINIMA on-chain. Continue?")
-                : ("Buy  ≈ " + minima + " MINIMA\nPay  " + usdt + " USDT (+ ETH gas)\n\nBest price " + fmtPrice(price) + " USDT/MINIMA\nCounterparty  " + Util.shorten(maker.signerPk)
+                ? ("Sell  " + minima + " mxUSDT\nReceive  ≈ " + usdt + " USDT\n\nBest price " + fmtPrice(price) + " USDT/mxUSDT\nCounterparty  " + Util.shorten(maker.signerPk)
+                    + "\n\nThis locks your mxUSDT on-chain. Continue?")
+                : ("Buy  ≈ " + minima + " mxUSDT\nPay  " + usdt + " USDT (+ ETH gas)\n\nBest price " + fmtPrice(price) + " USDT/mxUSDT\nCounterparty  " + Util.shorten(maker.signerPk)
                     + "\n\nThis locks your USDT on-chain. Continue?");
         modalOpen = true;
         dialog()
-                .setTitle(sellMinima ? "Review — Sell MINIMA" : "Review — Buy MINIMA")
+                .setTitle(sellMinima ? "Review — Sell mxUSDT" : "Review — Buy mxUSDT")
                 .setMessage(msg)
                 .setPositiveButton("Start swap", (d, w) -> { swapAmount = ""; startSwap(maker, "USDT", sellMinima, minima, usdt); })
                 .setNegativeButton("Cancel", null)
@@ -1883,35 +1883,35 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /** Route the Swap-tab CTA: size within the best level → today's single swap; larger → market sweep. */
-    /** {@code minimaStr} is the MINIMA amount to sell / to buy (the MINIMA-side field). */
+    /** {@code minimaStr} is the mxUSDT amount to sell / to buy (the mxUSDT-side field). */
     private void onSwapCta(boolean sell, String minimaStr, Best best) {
         swapInputFocused = false;   // leaving the amount field — panel re-renders live from here (0.8.1 lesson)
-        if (minimaStr.isEmpty()) { toast("Enter how much MINIMA to " + (sell ? "sell" : "buy")); return; }
+        if (minimaStr.isEmpty()) { toast("Enter how much mxUSDT to " + (sell ? "sell" : "buy")); return; }
         final Order bestMaker = sell ? best.bidMaker : best.askMaker;
         final double bestPrice = sell ? best.bestBid : best.bestAsk;
-        final double bestCap = sell ? best.bidCap : best.askCap;   // MINIMA
+        final double bestCap = sell ? best.bidCap : best.askCap;   // mxUSDT
         if (bestMaker == null || bestPrice <= 0) { toast("No quote available right now."); return; }
         final double EPS = 1e-9;
         final double want = parseD(minimaStr, 0);
-        if (want <= 0) { toast("Enter a valid MINIMA amount."); return; }
+        if (want <= 0) { toast("Enter a valid mxUSDT amount."); return; }
 
         if (sell) {
             if (want > parseD(minimaBal, 0) + EPS) {
-                toast("You only have ~" + abbrev(parseD(minimaBal, 0)) + " MINIMA available to sell."); return;
+                toast("You only have ~" + abbrev(parseD(minimaBal, 0)) + " mxUSDT available to sell."); return;
             }
-            if (want <= bestCap + EPS) { reviewSwap(bestMaker, true, minimaStr, bestPrice, bestCap); return; }   // single (send = MINIMA)
+            if (want <= bestCap + EPS) { reviewSwap(bestMaker, true, minimaStr, bestPrice, bestCap); return; }   // single (send = mxUSDT)
             SweepPlan plan = buildSweepPlan(true, minimaStr, 0);
             if (plan.legs.isEmpty()) { toast(sweepEmptyMsg(plan)); return; }
             reviewSweep(plan);
             return;
         }
 
-        // BUY: target-driven with slippage — deliver `want` MINIMA across asks priced ≤ best × (1+slippage).
+        // BUY: target-driven with slippage — deliver `want` mxUSDT across asks priced ≤ best × (1+slippage).
         SweepPlan plan = buildSweepPlan(false, minimaStr, buySlippage());
         if (plan.legs.isEmpty()) { toast(sweepEmptyMsg(plan)); return; }
         double haveUsdt = parseD(Util.tidyAmount(tokenBals.get("USDT")), 0);
         if (plan.totalUsdt > haveUsdt + EPS) {
-            toast("Need ≈ " + trimSig(plan.totalUsdt) + " USDT for " + abbrev(plan.filledMinima) + " MINIMA (within "
+            toast("Need ≈ " + trimSig(plan.totalUsdt) + " USDT for " + abbrev(plan.filledMinima) + " mxUSDT (within "
                     + pctStr(buySlippage() * 100) + "%) — you have " + trimSig(haveUsdt) + "."); return;
         }
         reviewSweep(plan);
@@ -1932,13 +1932,13 @@ public class MainActivity extends AppCompatActivity {
 
         TextView head = new TextView(this);
         head.setText(sell
-                ? ("Sell " + abbrev(plan.filledMinima) + " MINIMA in " + plan.legs.size() + (plan.legs.size() == 1 ? " part" : " parts"))
-                : ("Buy ≈ " + abbrev(plan.filledMinima) + " MINIMA for ≈ " + trimSig(plan.totalUsdt) + " USDT in " + plan.legs.size() + (plan.legs.size() == 1 ? " part" : " parts")));
+                ? ("Sell " + abbrev(plan.filledMinima) + " mxUSDT in " + plan.legs.size() + (plan.legs.size() == 1 ? " part" : " parts"))
+                : ("Buy ≈ " + abbrev(plan.filledMinima) + " mxUSDT for ≈ " + trimSig(plan.totalUsdt) + " USDT in " + plan.legs.size() + (plan.legs.size() == 1 ? " part" : " parts")));
         head.setTextColor(Design.TEXT()); head.setTextSize(15f); head.setTypeface(Design.sansBold()); head.setPadding(0, 0, 0, dp(6));
         box.addView(head);
 
         TextView metrics = new TextView(this);
-        metrics.setText("Avg " + fmtPrice(plan.avgPrice) + "  ·  worst " + fmtPrice(plan.worstPrice) + " USDT/MINIMA"
+        metrics.setText("Avg " + fmtPrice(plan.avgPrice) + "  ·  worst " + fmtPrice(plan.worstPrice) + " USDT/mxUSDT"
                 + (!sell && plan.slippagePct > 0 ? "  ·  within " + pctStr(plan.slippagePct) + "% slippage" : ""));
         metrics.setTextColor(Design.DIM()); metrics.setTextSize(12.5f); metrics.setTypeface(Design.sans()); metrics.setPadding(0, 0, 0, dp(8));
         box.addView(metrics);
@@ -1946,21 +1946,21 @@ public class MainActivity extends AppCompatActivity {
         for (int i = 0; i < plan.legs.size(); i++) {
             SweepLeg leg = plan.legs.get(i);
             TextView r = new TextView(this);
-            r.setText("Part " + (i + 1) + " · " + leg.minima + " MINIMA @ " + fmtPrice(leg.price) + " → " + leg.usdt + " USDT · " + shortAddr(leg.maker.signerPk));
+            r.setText("Part " + (i + 1) + " · " + leg.minima + " mxUSDT @ " + fmtPrice(leg.price) + " → " + leg.usdt + " USDT · " + shortAddr(leg.maker.signerPk));
             r.setTextColor(Design.TEXT()); r.setTextSize(12f); r.setTypeface(Design.mono()); r.setPadding(0, dp(2), 0, dp(2));
             box.addView(r);
         }
 
         TextView totals = new TextView(this);
         totals.setText(sell
-                ? ("Total: sell " + trimSig(plan.filledMinima) + " MINIMA · receive ≈ " + trimSig(plan.totalUsdt) + " USDT")
-                : ("Total: pay ≈ " + trimSig(plan.totalUsdt) + " USDT · receive ≈ " + trimSig(plan.filledMinima) + " MINIMA"));
+                ? ("Total: sell " + trimSig(plan.filledMinima) + " mxUSDT · receive ≈ " + trimSig(plan.totalUsdt) + " USDT")
+                : ("Total: pay ≈ " + trimSig(plan.totalUsdt) + " USDT · receive ≈ " + trimSig(plan.filledMinima) + " mxUSDT"));
         totals.setTextColor(Design.ACCENT()); totals.setTextSize(12.5f); totals.setTypeface(Design.sansBold()); totals.setPadding(0, dp(8), 0, dp(2));
         box.addView(totals);
 
         if (plan.partial) {
             TextView pw = new TextView(this);
-            String msg = "Fills " + abbrev(plan.filledMinima) + " of " + abbrev(plan.target) + " MINIMA — ";
+            String msg = "Fills " + abbrev(plan.filledMinima) + " of " + abbrev(plan.target) + " mxUSDT — ";
             if (!sell && "slippage".equals(plan.stopReason))
                 msg += "the rest is priced beyond your " + pctStr(plan.slippagePct) + "% slippage.";
             else
@@ -2007,7 +2007,7 @@ public class MainActivity extends AppCompatActivity {
         // pre-flight readiness
         box.addView(stagePill("Node connected", paired ? STG_DONE : STG_WARN));
         if (swapSell) {
-            box.addView(stagePill("MINIMA ready to sell", parseD(minimaBal, 0) > 0 ? STG_DONE : STG_WARN));
+            box.addView(stagePill("mxUSDT ready to sell", parseD(minimaBal, 0) > 0 ? STG_DONE : STG_WARN));
         } else {
             String usdt = tokenBals.get("USDT");
             box.addView(stagePill("USDT ready to spend", (usdt != null && parseD(usdt, 0) > 0) ? STG_DONE : STG_WARN));
@@ -2172,7 +2172,7 @@ public class MainActivity extends AppCompatActivity {
         SweepPlan(boolean sell) { this.sell = sell; }
     }
 
-    /** Round a MINIMA quantity DOWN to 8dp (never over a level's cap) and tidy it for the wire. */
+    /** Round a mxUSDT quantity DOWN to 8dp (never over a level's cap) and tidy it for the wire. */
     private static String legMinima(double v) {
         // mxUSDT is 8dp but ERC20 USDT is 6dp — quantize the Minima leg to 6dp so a 1:1 (parity) swap matches
         // the counter-leg exactly with no sub-grain remainder the token send would reject.
@@ -2182,7 +2182,7 @@ public class MainActivity extends AppCompatActivity {
     /** Round a USDT amount DOWN to 6dp (never over budget) and tidy it; null if it collapses to zero. */
     /** USDT for a target-driven BUY leg = ceil6(minima × price), computed EXACTLY in BigDecimal from the minima
      *  STRING (not a double product), so {@code lockedUsdt ≥ minima × price} holds to the last tick against the
-     *  maker's own BigDecimal guard while I still receive my target MINIMA. Non-finite/garbage input → null (no throw). */
+     *  maker's own BigDecimal guard while I still receive my target mxUSDT. Non-finite/garbage input → null (no throw). */
     private static String ceilUsdt(String minima, double price) {
         if (minima == null || !Double.isFinite(price) || price <= 0) return null;
         try {
@@ -2200,16 +2200,16 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * Walk the book best-price-first, splitting a large order into up to {@link Order#MAX_LEVELS} per-level legs.
-     * SELL is size-driven (send = MINIMA to sell); BUY is BUDGET-driven (send = USDT to spend) so the total
+     * SELL is size-driven (send = mxUSDT to sell); BUY is BUDGET-driven (send = USDT to spend) so the total
      * spent never exceeds what the user typed even as deeper legs cost more. Each leg is clamped to the maker's
      * display cap AND a per-maker running balance (so two tranches of one maker can't over-allocate). Never emits
      * a sub-min leg. Excludes my own orders.
      */
     /**
      * Split a large order into up to {@link Order#MAX_LEVELS} per-level legs, best-price-first. BOTH sides are
-     * MINIMA-TARGET-driven ({@code targetStr} = MINIMA to sell / to buy). BUY additionally caps at
+     * mxUSDT-TARGET-driven ({@code targetStr} = mxUSDT to sell / to buy). BUY additionally caps at
      * {@code bestAsk × (1+slippage)} — legs above that are not taken (partial). Leg rounding keeps the maker's
-     * guard satisfied: SELL locks MINIMA + requests {@code floor6(minima×bid)}; BUY locks {@code ceil6(minima×ask)}
+     * guard satisfied: SELL locks mxUSDT + requests {@code floor6(minima×bid)}; BUY locks {@code ceil6(minima×ask)}
      * + requests exactly {@code minima}. Each leg clamped to the maker's live balance + a per-maker running total.
      */
     private SweepPlan buildSweepPlan(boolean sell, String targetStr, double slippage) {
@@ -2217,14 +2217,14 @@ public class MainActivity extends AppCompatActivity {
         final double EPS = 1e-9;
         SweepPlan plan = new SweepPlan(sell);
         plan.slippagePct = slippage * 100;
-        double target = parseD(targetStr, 0);   // MINIMA to sell (sell) or MINIMA to buy (buy)
+        double target = parseD(targetStr, 0);   // mxUSDT to sell (sell) or mxUSDT to buy (buy)
         plan.target = target;
         if (target <= 0) { plan.stopReason = "book-exhausted"; return plan; }
         final double dust = Math.max(EPS, target * 1e-4);   // ignore a sub-0.01% rounding remainder
 
         java.util.Map<Order, Double> remUsdt = new java.util.HashMap<>();     // maker's remaining USDT balance
-        java.util.Map<Order, Double> remMinima = new java.util.HashMap<>();   // maker's remaining MINIMA balance
-        double remaining = target;                                           // MINIMA left to fill
+        java.util.Map<Order, Double> remMinima = new java.util.HashMap<>();   // maker's remaining mxUSDT balance
+        double remaining = target;                                           // mxUSDT left to fill
         double bestPrice = 0;                                                // first leg actually taken = the slippage anchor
 
         for (Object[] row : aggSide(sym, sell, true)) {
@@ -2235,7 +2235,7 @@ public class MainActivity extends AppCompatActivity {
             double price = lvl.price;
             if (price <= 0) continue;
 
-            // BUY slippage cap — never pay more than best × (1+slippage) per MINIMA.
+            // BUY slippage cap — never pay more than best × (1+slippage) per mxUSDT.
             if (!sell && bestPrice > 0 && slippage > 0 && price > bestPrice * (1 + slippage) + EPS) {
                 plan.stopReason = "slippage"; plan.partial = true; break;
             }
@@ -2244,10 +2244,10 @@ public class MainActivity extends AppCompatActivity {
             double mn = pr != null ? pr.min : 0;
 
             double capMinima;
-            if (sell) {   // maker BUYS my MINIMA with USDT → cap by their remaining USDT / price
+            if (sell) {   // maker BUYS my mxUSDT with USDT → cap by their remaining USDT / price
                 double ru = remUsdt.containsKey(maker) ? remUsdt.get(maker) : maker.usdtAvail;
                 capMinima = Math.min(lvl.amount, ru / price);
-            } else {      // maker SELLS MINIMA → cap by their remaining MINIMA
+            } else {      // maker SELLS mxUSDT → cap by their remaining mxUSDT
                 double rm = remMinima.containsKey(maker) ? remMinima.get(maker) : maker.minimaAvail;
                 capMinima = Math.min(lvl.amount, rm);
             }
@@ -2286,12 +2286,12 @@ public class MainActivity extends AppCompatActivity {
         return plan;
     }
 
-    /** Total MINIMA takeable across the book (≤6 legs) on the given side — for the "up to ~X" depth hint. */
+    /** Total mxUSDT takeable across the book (≤6 legs) on the given side — for the "up to ~X" depth hint. */
     private double sweepDepthMinima(boolean sell) {
         return buildSweepPlan(sell, "1000000000", sell ? 0 : buySlippage()).filledMinima;   // huge target → the whole (within-slippage) depth
     }
 
-    // ---- buy slippage tolerance (deliver the MINIMA target across deeper legs, capped at best × (1+slippage)) ----
+    // ---- buy slippage tolerance (deliver the mxUSDT target across deeper legs, capped at best × (1+slippage)) ----
 
     private double buySlippage() { return prefs.getFloat("buy_slippage_pct", 4.2f) / 100.0; }   // fraction, default 4.2%
 
@@ -2312,7 +2312,7 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL); box.setPadding(dp(20), dp(12), dp(20), dp(4));
         TextView h = new TextView(this);
-        h.setText("The most above the best price you'll pay per MINIMA when a buy fills across deeper levels.");
+        h.setText("The most above the best price you'll pay per mxUSDT when a buy fills across deeper levels.");
         h.setTextColor(Design.DIM()); h.setTextSize(12.5f); h.setTypeface(Design.sans()); h.setLineSpacing(dp(2), 1f); h.setPadding(0, 0, 0, dp(10));
         box.addView(h);
         final EditText e = new EditText(this); decimalInput(e);
@@ -2332,7 +2332,7 @@ public class MainActivity extends AppCompatActivity {
     // ---- Wallet tab ----
 
     private void renderWalletTab(LinearLayout col) {
-        LinearLayout minimaCard = walletCard("Minima · available to swap", minimaBal + " MINIMA", minimaBreakdown() + "  ·  long-press for coins", Design.ACCENT());
+        LinearLayout minimaCard = walletCard("Minima · available to swap", minimaBal + " mxUSDT", minimaBreakdown() + "  ·  long-press for coins", Design.ACCENT());
         minimaCard.setOnLongClickListener(v -> { minimaCoinDump(); return true; });
         col.addView(minimaCard);
         minimaBalView = (TextView) minimaCard.findViewWithTag(TAG_BAL);   // fresh ref each render (tree is rebuilt)
@@ -2461,10 +2461,10 @@ public class MainActivity extends AppCompatActivity {
         prefs.edit().putBoolean("seen_welcome", true).apply();
         dialog()
                 .setTitle("Welcome to usdtSwap")
-                .setMessage("Swap MINIMA ⇄ USDT trustlessly across chains — no middleman ever holds your funds.\n\n"
+                .setMessage("Swap mxUSDT ⇄ USDT trustlessly across chains — no middleman ever holds your funds.\n\n"
                         + "To trade you'll need:\n"
                         + "•  Minima Core running, with usdtSwap enabled in Apps\n"
-                        + "•  Some MINIMA to sell — or USDT plus a little ETH (for gas) to buy MINIMA\n\n"
+                        + "•  Some mxUSDT to sell — or USDT plus a little ETH (for gas) to buy mxUSDT\n\n"
                         + "Your keys are derived from your Minima node seed, so it's the same wallet on any device.\n\n"
                         + "Tabs:  Swap (quick trade)  ·  Wallet (your money)  ·  Activity (your swaps)  ·  "
                         + "Market (full order book)  ·  OTC (private deals).\n\n"
@@ -2587,7 +2587,7 @@ public class MainActivity extends AppCompatActivity {
 
         TextView stats = new TextView(this);
         String last = chartData.isEmpty() ? "—" : fmtPrice(chartData.get(chartData.size() - 1).price);
-        stats.setText("last " + last + " USDT/MINIMA  ·  " + countByStatus(recent) + "  ·  price only (buy/sell not shown)");
+        stats.setText("last " + last + " USDT/mxUSDT  ·  " + countByStatus(recent) + "  ·  price only (buy/sell not shown)");
         stats.setTextColor(Design.DIM2()); stats.setTextSize(11f); stats.setTypeface(Design.sans()); stats.setPadding(dp(2), dp(8), 0, dp(6));
         col.addView(stats);
 
@@ -2827,7 +2827,7 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * The order book as centred two-sided rows — one per maker: bidSize · bidPrice │ askPrice · askSize,
-     * maker tag above. Tap the bid half to SELL MINIMA, the ask half to BUY MINIMA. Best bid/ask highlighted.
+     * maker tag above. Tap the bid half to SELL mxUSDT, the ask half to BUY mxUSDT. Best bid/ask highlighted.
      */
     /** {Order maker, Order.Level} rows for one side across the live book, best-price-first (sell→bids DESC,
      *  buy→asks ASC). Legacy single-price makers contribute one synthetic level via effectiveBids/Asks.
@@ -2855,7 +2855,7 @@ public class MainActivity extends AppCompatActivity {
         double bestAsk = asksAgg.isEmpty() ? 0 : ((Order.Level) asksAgg.get(0)[1]).price;
         if (bestBid > 0 && bestAsk > 0) {
             TextView sp = new TextView(this);
-            sp.setText("spread " + fmtPrice(bestAsk - bestBid) + " " + sym + "  ·  " + sym + " per MINIMA, size in MINIMA");
+            sp.setText("spread " + fmtPrice(bestAsk - bestBid) + " " + sym + "  ·  " + sym + " per mxUSDT, size in mxUSDT");
             sp.setTextColor(Design.DIM2()); sp.setTextSize(11f); sp.setTypeface(Design.sans()); sp.setPadding(dp(2), dp(4), 0, dp(4));
             col.addView(sp);
         }
@@ -2863,8 +2863,8 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout legend = new LinearLayout(this);
         legend.setOrientation(LinearLayout.HORIZONTAL);
         legend.setPadding(dp(6), dp(4), dp(6), dp(2));
-        TextView lL = new TextView(this); lL.setText("SELL MINIMA (bid)"); lL.setTextColor(Design.IN()); lL.setTextSize(11f); lL.setTypeface(Design.sansBold()); lL.setLetterSpacing(0.04f);
-        TextView lR = new TextView(this); lR.setText("BUY MINIMA (ask)"); lR.setTextColor(Design.RED()); lR.setTextSize(11f); lR.setTypeface(Design.sansBold()); lR.setLetterSpacing(0.04f); lR.setGravity(Gravity.END);
+        TextView lL = new TextView(this); lL.setText("SELL mxUSDT (bid)"); lL.setTextColor(Design.IN()); lL.setTextSize(11f); lL.setTypeface(Design.sansBold()); lL.setLetterSpacing(0.04f);
+        TextView lR = new TextView(this); lR.setText("BUY mxUSDT (ask)"); lR.setTextColor(Design.RED()); lR.setTextSize(11f); lR.setTypeface(Design.sansBold()); lR.setLetterSpacing(0.04f); lR.setGravity(Gravity.END);
         legend.addView(lL, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         legend.addView(lR, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         col.addView(legend);
@@ -2959,7 +2959,7 @@ public class MainActivity extends AppCompatActivity {
         return h;
     }
 
-    /** Compact MINIMA size: 300 / 12k / 1.2M. */
+    /** Compact mxUSDT size: 300 / 12k / 1.2M. */
     private static String abbrev(double v) {
         if (v <= 0) return "—";
         if (v >= 1_000_000) return trimNum(v / 1_000_000) + "M";
@@ -3165,15 +3165,15 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout box = otcCardBox(col);
         final boolean enabled = prefs.getBoolean("otc_enable", false);
 
-        box.addView(fieldLabel("I SELL MINIMA up to"));
+        box.addView(fieldLabel("I SELL mxUSDT up to"));
         final EditText sellE = new EditText(this); decimalInput(sellE);
-        sellE.setHint("max MINIMA (blank = off)"); sellE.setHintTextColor(Design.DIM2());
+        sellE.setHint("max mxUSDT (blank = off)"); sellE.setHintTextColor(Design.DIM2());
         sellE.setText(prefs.getString("otc_sell_size", "")); sellE.setTextColor(Design.TEXT()); sellE.setTextSize(15f); sellE.setTypeface(Design.mono());
         box.addView(sellE);
 
-        box.addView(fieldLabel("I BUY MINIMA up to"));
+        box.addView(fieldLabel("I BUY mxUSDT up to"));
         final EditText buyE = new EditText(this); decimalInput(buyE);
-        buyE.setHint("max MINIMA (blank = off)"); buyE.setHintTextColor(Design.DIM2());
+        buyE.setHint("max mxUSDT (blank = off)"); buyE.setHintTextColor(Design.DIM2());
         buyE.setText(prefs.getString("otc_buy_size", "")); buyE.setTextColor(Design.TEXT()); buyE.setTextSize(15f); buyE.setTypeface(Design.mono());
         box.addView(buyE);
 
@@ -3208,21 +3208,21 @@ public class MainActivity extends AppCompatActivity {
             any = true;
             LinearLayout box = otcCardBox(col);
             StringBuilder sides = new StringBuilder();
-            if (o.sells()) sides.append("sells up to ").append(trimSig(o.sellSize)).append(" MINIMA");
-            if (o.buys()) { if (sides.length() > 0) sides.append("   ·   "); sides.append("buys up to ").append(trimSig(o.buySize)).append(" MINIMA"); }
+            if (o.sells()) sides.append("sells up to ").append(trimSig(o.sellSize)).append(" mxUSDT");
+            if (o.buys()) { if (sides.length() > 0) sides.append("   ·   "); sides.append("buys up to ").append(trimSig(o.buySize)).append(" mxUSDT"); }
             TextView t = new TextView(this);
             t.setText(sides.toString()); t.setTextColor(Design.TEXT()); t.setTextSize(14.5f); t.setTypeface(Design.sansBold()); box.addView(t);
             TextView who = new TextView(this); who.setText("LP " + shortAddr(o.signerPk));
             who.setTextColor(Design.DIM()); who.setTextSize(12f); who.setTypeface(Design.sans()); who.setPadding(0, dp(4), 0, dp(8)); box.addView(who);
             LinearLayout row = new LinearLayout(this); row.setOrientation(LinearLayout.HORIZONTAL);
-            if (o.sells()) {   // LP sells → I can BUY MINIMA from them
-                TextView b = Design.pill(this, "Buy MINIMA", Design.ACCENT(), Design.ON_ACCENT());
+            if (o.sells()) {   // LP sells → I can BUY mxUSDT from them
+                TextView b = Design.pill(this, "Buy mxUSDT", Design.ACCENT(), Design.ON_ACCENT());
                 b.setOnClickListener(v -> otcProposeDialog(o, OtcOffer.LP_SELLS_MINIMA)); Design.pressable(b);
                 LinearLayout.LayoutParams m = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT); m.rightMargin = dp(8);
                 row.addView(b, m);
             }
-            if (o.buys()) {    // LP buys → I can SELL MINIMA to them
-                TextView s = Design.pill(this, "Sell MINIMA", Design.SURFACE2(), Design.TEXT());
+            if (o.buys()) {    // LP buys → I can SELL mxUSDT to them
+                TextView s = Design.pill(this, "Sell mxUSDT", Design.SURFACE2(), Design.TEXT());
                 s.setOnClickListener(v -> otcProposeDialog(o, OtcOffer.LP_BUYS_MINIMA)); Design.pressable(s);
                 row.addView(s);
             }
@@ -3242,7 +3242,7 @@ public class MainActivity extends AppCompatActivity {
                     ? (OtcDb.ROLE_INSTIGATOR.equals(d.role) ? "BUY " : "SELL ")
                     : (OtcDb.ROLE_INSTIGATOR.equals(d.role) ? "SELL " : "BUY ");
             TextView t = new TextView(this);
-            t.setText(dir + d.amount + " MINIMA @ " + d.price + " USDT");
+            t.setText(dir + d.amount + " mxUSDT @ " + d.price + " USDT");
             t.setTextColor(Design.TEXT()); t.setTextSize(15f); t.setTypeface(Design.sansBold()); box.addView(t);
             TextView st = new TextView(this);
             st.setText(otcStatusText(d)); st.setTextColor(otcStatusColor(d)); st.setTextSize(12.5f); st.setTypeface(Design.sans()); st.setPadding(0, dp(4), 0, dp(2)); box.addView(st);
@@ -3296,10 +3296,10 @@ public class MainActivity extends AppCompatActivity {
         double amt = parseD(amount, 0), pr = parseD(price, 0);
         boolean iLockMinima = (OtcDb.ROLE_INSTIGATOR.equals(role) && OtcOffer.LP_BUYS_MINIMA.equals(side))
                 || (OtcDb.ROLE_LP.equals(role) && OtcOffer.LP_SELLS_MINIMA.equals(side));
-        if (iLockMinima) {                                               // I'd lock MINIMA = amount
-            double have = parseD(minimaBal, -1);                         // "sendable" (tradeable) MINIMA
+        if (iLockMinima) {                                               // I'd lock mxUSDT = amount
+            double have = parseD(minimaBal, -1);                         // "sendable" (tradeable) mxUSDT
             if (have < 0) return null;                                   // unknown → don't block; execute is the gate
-            if (amt > have + 1e-9) return "Not enough MINIMA — need " + trim(amt) + ", have " + trim(have);
+            if (amt > have + 1e-9) return "Not enough mxUSDT — need " + trim(amt) + ", have " + trim(have);
         } else {                                                        // I'd lock USDT = amount × price
             String u = tokenBals.get("USDT");
             if (u == null) return null;                                 // not loaded → don't block
@@ -3314,12 +3314,12 @@ public class MainActivity extends AppCompatActivity {
         final boolean iBuy = OtcOffer.LP_SELLS_MINIMA.equals(dealSide);
         final double cap = lp.capFor(dealSide);
         LinearLayout box = new LinearLayout(this); box.setOrientation(LinearLayout.VERTICAL); box.setPadding(dp(4), dp(4), dp(4), dp(4));
-        box.addView(fieldLabel("MINIMA amount (≤ " + trimSig(cap) + ")"));
+        box.addView(fieldLabel("mxUSDT amount (≤ " + trimSig(cap) + ")"));
         final EditText amtE = new EditText(this); decimalInput(amtE); amtE.setTextColor(Design.TEXT()); amtE.setTextSize(16f); amtE.setTypeface(Design.mono()); box.addView(amtE);
-        box.addView(fieldLabel("Price (USDT per MINIMA)"));
+        box.addView(fieldLabel("Price (USDT per mxUSDT)"));
         final EditText prE = new EditText(this); decimalInput(prE); prE.setTextColor(Design.TEXT()); prE.setTextSize(16f); prE.setTypeface(Design.mono()); box.addView(prE);
         modalOpen = true;
-        dialog().setTitle(iBuy ? "Buy MINIMA" : "Sell MINIMA")
+        dialog().setTitle(iBuy ? "Buy mxUSDT" : "Sell mxUSDT")
                 .setView(wrapScroll(box))
                 .setPositiveButton("Send offer", (dg, w) -> {
                     double a = parseD(amtE.getText().toString(), 0), p = parseD(prE.getText().toString(), 0);
@@ -3336,9 +3336,9 @@ public class MainActivity extends AppCompatActivity {
 
     private void otcCounterDialog(final OtcDb.Deal d) {
         LinearLayout box = new LinearLayout(this); box.setOrientation(LinearLayout.VERTICAL); box.setPadding(dp(4), dp(4), dp(4), dp(4));
-        box.addView(fieldLabel("MINIMA amount"));
+        box.addView(fieldLabel("mxUSDT amount"));
         final EditText amtE = new EditText(this); decimalInput(amtE); amtE.setText(d.amount); amtE.setTextColor(Design.TEXT()); amtE.setTextSize(16f); amtE.setTypeface(Design.mono()); box.addView(amtE);
-        box.addView(fieldLabel("Price (USDT per MINIMA)"));
+        box.addView(fieldLabel("Price (USDT per mxUSDT)"));
         final EditText prE = new EditText(this); decimalInput(prE); prE.setText(d.price); prE.setTextColor(Design.TEXT()); prE.setTextSize(16f); prE.setTypeface(Design.mono()); box.addView(prE);
         modalOpen = true;
         dialog().setTitle("Counter-offer").setView(wrapScroll(box))

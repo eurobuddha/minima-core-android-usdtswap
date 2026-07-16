@@ -131,7 +131,7 @@ public final class MinimaHtlc {
     // ---- LOCK: send a coin to the HTLC with the 7 PREVSTATE fields ----
 
     /**
-     * @param amount        MINIMA amount to lock (the owner's side)
+     * @param amount        mxUSDT amount to lock (the owner's side)
      * @param requestAmount the ERC20 amount requested in return (string)
      * @param reqToken      the ERC20 token contract address (the script stores "[reqToken]")
      * @param receiverPubkey counterparty's Minima public key (who can claim with the secret)
@@ -211,14 +211,14 @@ public final class MinimaHtlc {
         seq.add("txnsign id:" + id + " publickey:auto");
         // Split the broadcast (txnpost) from the build: a build failure PROVABLY didn't broadcast (caller may
         // retry); a txnpost failure MAY have broadcast with a lost response, so it's tagged "POSTED:" and the
-        // caller must NOT retry (the MINIMA leg has no on-chain hash-uniqueness → a retry would double-lock).
+        // caller must NOT retry (the mxUSDT leg has no on-chain hash-uniqueness → a retry would double-lock).
         runSeq(seq, built -> cmd("txnpost id:" + id + " mine:true auto:true txndelete:true",
                 posted -> cb.ok(txpowOf(posted)),
                 e -> { deleteTxn(id); cb.err("POSTED:" + e); }),
             e -> { deleteTxn(id); cb.err(e); });
     }
 
-    /** My spendable native-MINIMA coins (confirmed, simple-address) — the pool an ask ladder can lock against.
+    /** My spendable native-mxUSDT coins (confirmed, simple-address) — the pool an ask ladder can lock against.
      *  Each element has an {@code amount}; used to count coins ≥ a tranche size and decide whether to split. */
     public void myFreeCoins(Consumer<org.json.JSONArray> ok, Consumer<String> err) {
         // coinage:1 → confirmed coins only, matching splitCoins' coinage:1 inputs: the target we compute here is
@@ -229,7 +229,7 @@ public final class MinimaHtlc {
         }, err);
     }
 
-    /** Is there any UNCONFIRMED native MINIMA in my wallet (a split/lock/payment still settling)? The chain's
+    /** Is there any UNCONFIRMED native mxUSDT in my wallet (a split/lock/payment still settling)? The chain's
      *  unconfirmed pool is global, so this is a cross-process check — it stops a second engine (after a
      *  foreground↔background handoff) from re-issuing a split whose coins from the first engine haven't landed yet. */
     public void hasPendingMinima(Consumer<Boolean> ok, Consumer<String> err) {
@@ -244,7 +244,7 @@ public final class MinimaHtlc {
         }, err);
     }
 
-    /** Split my own coins into {@code count} equal coins totalling {@code totalAmount} MINIMA, in ONE tx, from
+    /** Split my own coins into {@code count} equal coins totalling {@code totalAmount} mxUSDT, in ONE tx, from
      *  CONFIRMED inputs only (coinage:1) — so a multi-tranche ask ladder has enough separately-spendable coins to
      *  lock every leg of a sweep concurrently (native {@code send split:} sends to my own address). */
     public void splitCoins(int count, String totalAmount, PostCb cb) {
@@ -332,7 +332,7 @@ public final class MinimaHtlc {
     }
 
     /** Find HTLC coin(s) carrying a specific hashlock (state[5]==hash) via the reliable coinnotify-add +
-     *  state-filter path. Discovers a counterparty's MINIMA leg — which we only RECEIVE (state[4]), so the
+     *  state-filter path. Discovers a counterparty's mxUSDT leg — which we only RECEIVE (state[4]), so the
      *  node's one-shot relevant:true set can miss it (the second-leg-of-a-sweep bug) — and confirms our own
      *  lock. The server-side state: filter returns only our coin(s), so it stays cheap at any global volume. */
     public void scanHtlcByHash(String hash, int coinageMin, int depth, Consumer<org.json.JSONArray> ok, Consumer<String> err) {
@@ -366,7 +366,7 @@ public final class MinimaHtlc {
 
     /**
      * Scan the notify address for revealed-secret coins (the 0.0001 coins a claim forces to {@link #NOTIFY}).
-     * The ERC20→MINIMA responder reads the secret here. Bounded by {@code depth} — the address is global,
+     * The ERC20→mxUSDT responder reads the secret here. Bounded by {@code depth} — the address is global,
      * so we never query it unbounded; the caller filters by the hashlocks it actually cares about.
      */
     /**

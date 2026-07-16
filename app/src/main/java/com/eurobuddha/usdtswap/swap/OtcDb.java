@@ -41,8 +41,8 @@ public final class OtcDb {
         public String peerMinimaPk;      // counterparty Minima pubkey
         public String peerEthAddr;       // counterparty ETH address
         public String side;              // OtcOffer.LP_SELLS_MINIMA / LP_BUYS_MINIMA (LP perspective)
-        public String amount;            // current MINIMA amount, decimal string
-        public String price;             // current USDT per MINIMA, decimal string
+        public String amount;            // current mxUSDT amount, decimal string
+        public String price;             // current USDT per mxUSDT, decimal string
         public String status;
         public String whoseTurn;         // TURN_ME / TURN_PEER
         public String hash;              // on-chain hashlock once executing (links to SwapDb)

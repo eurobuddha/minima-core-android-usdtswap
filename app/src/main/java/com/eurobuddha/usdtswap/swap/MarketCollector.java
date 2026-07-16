@@ -10,7 +10,7 @@ import java.util.Set;
 /**
  * Builds a NETWORK-WIDE trade history from on-chain HTLC locks (the market data feed). On-chain only shows
  * OPEN locks and the price-bearing coin is spent on completion, so there's no backfill — we poll the shared
- * HTLC address each watcher cycle, persist every observed lock {@code (price = reqUSDT/MINIMA, size, hash,
+ * HTLC address each watcher cycle, persist every observed lock {@code (price = reqUSDT/mxUSDT, size, hash,
  * block)}, then reconcile locks that have since been spent to EXECUTED (a notify coin revealed the secret) or
  * REFUNDED (no notify ⇒ refund; the KISS script forces a notify on every claim).
  *
@@ -37,7 +37,7 @@ public final class MarketCollector {
             if (c == null) continue;
             String coinid = c.optString("coinid", "");
             if (coinid.isEmpty()) continue;
-            String size = c.optString("amount", "0");          // MINIMA locked = trade size
+            String size = c.optString("amount", "0");          // mxUSDT locked = trade size
             String reqAmount = MinimaHtlc.stateAt(c, 1);        // counter-asset (USDT) requested
             double price = price(reqAmount, size);
             if (price <= 0) continue;                           // not a priced lock — skip

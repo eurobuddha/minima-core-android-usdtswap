@@ -21,7 +21,7 @@ public final class CommsTransport {
     public static final String MESSAGE_AMOUNT = "0.000000001";
 
     /** Supported pay tokens (same as miniMall). */
-    public static final String MINIMA = "0x00";
+    public static final String NATIVE = "0x00";
     public static final String USDT   = "0x7D39745FBD29049BE29850B55A18BF550E4D442F930F86266E34193D89042A90";
 
     public interface SendCb {
@@ -38,7 +38,7 @@ public final class CommsTransport {
             cb.onFailed("encrypt failed: " + e.getMessage());
             return;
         }
-        postBlob(node, MINIMERCH_ADDRESS, MESSAGE_AMOUNT, MINIMA, blob, null, cb);
+        postBlob(node, MINIMERCH_ADDRESS, MESSAGE_AMOUNT, NATIVE, blob, null, cb);
     }
 
     /** Send a real value PAYMENT to a vendor address; stamp the order ref into state[1] for matching. */

@@ -281,7 +281,7 @@ public class SwapService extends Service {
         }
         ensureDerivations();
         // Stand down while the Activity is foreground (it polls then) or mid-sweep — its sequential legs
-        // own the ETH "pending" nonce / MINIMA coin selection; a Service poll could submit a colliding tx.
+        // own the ETH "pending" nonce / mxUSDT coin selection; a Service poll could submit a colliding tx.
         if (!MainActivity.FOREGROUND && !MainActivity.SWEEP_ACTIVE && engine != null) {
             // Re-arm the responder guard from the PERSISTED config on EVERY pass, BEFORE poll() — a
             // cancel/edit made in the other host must reach this engine's guard (a cancelled order's
@@ -355,7 +355,7 @@ public class SwapService extends Service {
             if (isNew) prefs.edit().putString("incoming_hashlocks", android.text.TextUtils.join(",", set)).apply();
             engine.addIncomingHashlock(hash);
             if (isNew && !MainActivity.SWEEP_ACTIVE) engine.checkBuyNow(hash);   // act now — don't wait for the next 90s poll
-            if (isNew) alert("Buy request received", "A buyer wants your MINIMA — finding their USDT lock, then locking.");
+            if (isNew) alert("Buy request received", "A buyer wants your mxUSDT — finding their USDT lock, then locking.");
             return isNew;
         } catch (Exception e) { return false; }
     }

@@ -2,7 +2,7 @@ package com.eurobuddha.usdtswap.eth;
 
 /**
  * Ethereum network config for the swap — addresses, decimals, default RPC. Mainnet only; the single
- * supported pair is native MINIMA ↔ USDT (the bridge HTLC vault is ERC20-only). Addresses are the
+ * supported pair is native mxUSDT ↔ USDT (the bridge HTLC vault is ERC20-only). Addresses are the
  * canonical ones from the upstream bridge MiniDapp (dapp/js/htlcvars.js), so swaps interoperate with it.
  */
 public enum EthNet {

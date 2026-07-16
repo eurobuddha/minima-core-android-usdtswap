@@ -243,7 +243,7 @@ public final class SwapDb {
 
     public static final class MarketTrade {
         public String coinid, hash, sizeMinima, reqAmount, reqToken, owner, receiver, status, secret;
-        public double price;          // USDT per MINIMA = reqAmount / sizeMinima
+        public double price;          // USDT per mxUSDT = reqAmount / sizeMinima
         public long createdBlock, observedAt, timelock;
     }
 

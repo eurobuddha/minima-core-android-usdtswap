@@ -186,7 +186,7 @@ public final class EthHtlc {
         public String minimaPublicKey;// the locker's Minima pubkey (bytes32)
         public String tokenContract;  // ERC20 address
         public BigInteger amount;     // raw token amount (un-scaled)
-        public BigInteger requestAmount; // raw MINIMA requested (18 dp)
+        public BigInteger requestAmount; // raw mxUSDT requested (18 dp)
         public String hashlock;       // 0x…
         public long timelock;         // unix seconds
         public boolean otc;

@@ -6,18 +6,18 @@ import org.json.JSONObject;
 /**
  * An OTC liquidity provider's standing availability — the OTC analog of {@link Order}, but with NO price
  * ladder (price is negotiated per deal). A single offer quotes BOTH sides independently: {@code sellSize}
- * (max MINIMA the LP will sell) and {@code buySize} (max MINIMA the LP will buy), either 0 to disable that
+ * (max mxUSDT the LP will sell) and {@code buySize} (max mxUSDT the LP will buy), either 0 to disable that
  * side. Advertised as signed coin-state via {@link OtcBook} (freshest-per-signer); withdrawn by publishing
  * an empty (disabled) offer as a tombstone.
  */
 public final class OtcOffer {
 
-    public static final String LP_SELLS_MINIMA = "SELL";   // a DEAL where the LP sells MINIMA (the instigator buys)
-    public static final String LP_BUYS_MINIMA  = "BUY";    // a DEAL where the LP buys MINIMA (the instigator sells)
+    public static final String LP_SELLS_MINIMA = "SELL";   // a DEAL where the LP sells mxUSDT (the instigator buys)
+    public static final String LP_BUYS_MINIMA  = "BUY";    // a DEAL where the LP buys mxUSDT (the instigator sells)
 
     // sender-authored (signed) fields
-    public double sellSize = 0;           // max MINIMA the LP will SELL (0 = not selling)
-    public double buySize = 0;            // max MINIMA the LP will BUY  (0 = not buying)
+    public double sellSize = 0;           // max mxUSDT the LP will SELL (0 = not selling)
+    public double buySize = 0;            // max mxUSDT the LP will BUY  (0 = not buying)
     public boolean enable = false;
     public String minimaPublicKey = "";   // LP's Minima HTLC pubkey
     public String ethAddress = "";        // LP's ETH receiving address
@@ -32,7 +32,7 @@ public final class OtcOffer {
     public boolean hasLiquidity() { return enable && (sellSize > 0 || buySize > 0); }
     public boolean sells() { return enable && sellSize > 0; }
     public boolean buys()  { return enable && buySize > 0; }
-    /** The LP's cap (MINIMA) for a deal on {@code dealSide} (LP_SELLS_MINIMA / LP_BUYS_MINIMA). */
+    /** The LP's cap (mxUSDT) for a deal on {@code dealSide} (LP_SELLS_MINIMA / LP_BUYS_MINIMA). */
     public double capFor(String dealSide) { return LP_SELLS_MINIMA.equals(dealSide) ? sellSize : buySize; }
 
     public JSONObject toJson() throws JSONException {
