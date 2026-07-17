@@ -10,6 +10,7 @@ import com.eurobuddha.usdtswap.eth.EthNet;
 import com.eurobuddha.usdtswap.eth.EthRpc;
 import com.eurobuddha.usdtswap.eth.EthTx;
 import com.eurobuddha.usdtswap.eth.EthWallet;
+import com.eurobuddha.usdtswap.SwapLog;
 import org.web3j.crypto.Credentials;
 
 import java.math.BigDecimal;
@@ -98,6 +99,10 @@ public final class SwapEngine {
     // re-broadcast to ≥ ETH_RETRY_SECS apart. In-memory only: a restart re-drives terminal state from the
     // on-chain withdrawn/refunded flags anyway, so losing these timestamps just allows an immediate retry.
     private final Map<String, Long> ethAttempt = new java.util.concurrent.ConcurrentHashMap<>();
+    // H2: throttle the heavy market-history HTLC scan to at most every 5 min, and pause it while a claim is
+    // pending (see poll()), so the single node command thread isn't starved when a claim is racing a timelock.
+    private static final long MARKET_MIN_INTERVAL_MS = 5 * 60 * 1000;
+    private volatile long lastMarketPollMs = 0;
 
     public SwapEngine(NodeApi node, MinimaHtlc minima, SwapDb db, EthWallet wallet,
                       Handler ui, Notifier notifier) {
@@ -487,7 +492,15 @@ public final class SwapEngine {
             @Override public void ok(int block) {
                 runMinimaChecks(block);
                 io.execute(() -> runEthChecks(block));
-                MarketCollector.poll(minima, db, block);   // accrue network-wide trade history
+                // H2: the market-history collector scans the WHOLE shared HTLC address (heavy) on the node's
+                // SINGLE command thread. Run it at most every MARKET_MIN_INTERVAL_MS, and SKIP it entirely while
+                // a claim is pending — so a time-critical claim (racing a counter-leg timelock) is never starved
+                // of the node thread by a background price-feed scan.
+                long now = System.currentTimeMillis();
+                if (now - lastMarketPollMs >= MARKET_MIN_INTERVAL_MS && pendingClaimMinimaHashes().isEmpty()) {
+                    lastMarketPollMs = now;
+                    MarketCollector.poll(minima, db, block);   // accrue network-wide trade history
+                }
             }
             @Override public void err(String m) { /* node busy; next cycle */ }
         });
@@ -564,18 +577,29 @@ public final class SwapEngine {
                 db.logEvent(hash, SwapDb.EV_COLLECT, "minima", "0", "counterparty amount/token mismatch");
                 return;
             }
-            if (db.haveCollect(hash) || !inflight.add("claimM:" + hash)) return;
+            // H1: SELF-HEALING gate (reuses the generic ethAttempt/ethRetryDue retry-window from F1, keyed
+            // "claimM:"+hash). The OLD guard `inflight.add("claimM:")` was cleared ONLY in the claim callback —
+            // so if a node command timed out and the callback was lost, the marker stuck forever and the claim
+            // NEVER retried (the 30-min stall we hit). Now the timestamp is the gate: markEthAttempt stamps NOW
+            // (same-cycle dedup), and after ETH_RETRY_SECS a lost/failed claim re-fires on its own. No inflight.
+            if (db.haveCollect(hash) || !ethRetryDue("claimM:" + hash)) return;
+            markEthAttempt("claimM:" + hash);
             db.setSwapStatus(hash, SwapDb.ST_CLAIMING);   // counterparty leg found — claiming now
             notifier.onSwapsChanged();
+            SwapLog.d("claim MINIMA leg " + hash + " amount=" + MinimaHtlc.coinAmount(coin));
             minima.claim(coin, hash, secret, new MinimaHtlc.PostCb() {
                 @Override public void ok(String txpowid) {
                     db.logEvent(hash, SwapDb.EV_COLLECT, "minima", MinimaHtlc.coinAmount(coin), txpowid);
                     db.setSwapStatus(hash, SwapDb.ST_COMPLETE);
                     notifier.notify("Swap complete", "Claimed " + MinimaHtlc.coinAmount(coin) + " mxUSDT");
                     notifier.onSwapsChanged();
-                    inflight.remove("claimM:" + hash);
+                    ethAttempt.remove("claimM:" + hash);
+                    SwapLog.d("claim OK " + hash + " tx=" + txpowid);
                 }
-                @Override public void err(String m) { inflight.remove("claimM:" + hash); }
+                @Override public void err(String m) {
+                    SwapLog.w("claim ERR " + hash + ": " + m + " (retries after the window)");
+                    // leave the attempt timestamp → the next poll after ETH_RETRY_SECS retries it
+                }
             });
             return;
         }
