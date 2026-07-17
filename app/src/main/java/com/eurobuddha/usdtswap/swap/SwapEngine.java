@@ -53,7 +53,6 @@ public final class SwapEngine {
     public static final long CP_SECS_CHECK              = TIMELOCK_SECS / 2;                 // 3600
     public static final int  CP_BLOCKS                  = (TIMELOCK_BLOCKS / 2) / 2;         // 36
     public static final long CP_SECS                    = (TIMELOCK_SECS / 2) / 2;           // 1800
-    private static final long SECRETS_BACKLOG           = 50 + (TIMELOCK_SECS / 15);         // ETH blocks
     private static final int  NOTIFY_SCAN_DEPTH         = 256;                               // bounded notify scan
     private static final int  HTLC_SCAN_DEPTH           = 256;                               // bounded HTLC coin scan
     // F1: an ETH withdraw/refund broadcast is only an ACK, not a mined receipt. We treat a swap as settled
@@ -90,7 +89,6 @@ public final class SwapEngine {
     private volatile Order myOrder;                 // my published order — the responder-side match guard
     private volatile OtcDb otcDb;                   // OTC deal store — the OTC responder's agreed-terms gate
 
-    private volatile long lastSecretBlock = -1;     // ETH block bookmark (checkETHNewSecrets)
     private volatile long lastEthScanned = -1;      // ETH block bookmark (New-contract discovery)
     private final Set<String> inflight = Collections.synchronizedSet(new HashSet<>());
     private final Map<String, Long> approvePending = Collections.synchronizedMap(new HashMap<>());
@@ -109,7 +107,6 @@ public final class SwapEngine {
 
     public void setNetwork(EthRpc rpc, EthNet net) {
         this.rpc = rpc; this.net = net;
-        lastSecretBlock = -1;             // re-scan secrets from the backlog on the new chain
         lastEthScanned = -1;
         approvePending.clear();
         EthTx.resetAll();                 // cold-start the nonce serializer against the new node's "pending"
@@ -236,6 +233,11 @@ public final class SwapEngine {
      *  and only the negotiated OTC responder locks the counter-leg. */
     public void startMinimaToErc20(Order maker, String sellMinima, String tokenSymbol, String buyTokenAmount, boolean otc, StartCb cb) {
         if (!ready()) { cb.err("Not ready"); return; }
+        // M3: a responder burst-lock (or a coin-split) draws mxUSDT from the SAME coin pool that this
+        // user-initiated node-auto-select lock does; both could pick the same coin → one tx is rejected as a
+        // double-spend (fund-safe) but can leave a phantom LOCKED row. Decline briefly while a responder lock or
+        // split is in flight so the user just retries a moment later instead of racing it.
+        if (!cpInFlight.isEmpty() || isSplitting()) { cb.err("Busy locking another swap — try again in a few seconds"); return; }
         final EthNet.Token token = net.token(tokenSymbol);
         if (token == null) { cb.err("Unknown token " + tokenSymbol); return; }
         final String reqToken = "ETH:" + token.address;
@@ -244,17 +246,23 @@ public final class SwapEngine {
                 minima.currentBlock(new MinimaHtlc.BlockCb() {
                     @Override public void ok(int block) {
                         final int timelock = block + TIMELOCK_BLOCKS;
+                        // M2: record the secret + swap row BEFORE the lock broadcast (parity with
+                        // startErc20ToMinima). If lock() mines but its response is lost, the secret + row survive
+                        // so the swap can still be claimed; the chain-scan refund (scanMyHtlcByKey →
+                        // checkExpiredMinima) reclaims the coin at the timelock regardless of the DB. A row whose
+                        // broadcast never landed is a harmless phantom (no coin at the HTLC address for this hash
+                        // → no responder engages, nothing to refund).
+                        db.insertSecret(hash, secret);
+                        db.insertMyHtlc(hash, buyTokenAmount, reqToken);
+                        SwapDb.Swap s = baseSwap(hash, "INITIATOR", "MINIMA_TO_ERC20",
+                                "mxUSDT", sellMinima, tokenSymbol, buyTokenAmount, maker.ethAddress);
+                        s.myTimelock = timelock; s.myLegIsMinima = true; s.status = SwapDb.ST_STARTED;
+                        db.upsertSwap(s);
+                        notifier.onSwapsChanged();
                         minima.lock(sellMinima, buyTokenAmount, token.address, maker.minimaPublicKey,
                                 myEth(), hash, timelock, otc ? "TRUE" : "FALSE", new MinimaHtlc.PostCb() {
                             @Override public void ok(String txpowid) {
-                                db.insertSecret(hash, secret);
                                 db.logEvent(hash, SwapDb.EV_STARTED, "minima", sellMinima, txpowid);
-                                db.insertMyHtlc(hash, buyTokenAmount, reqToken);
-                                SwapDb.Swap s = baseSwap(hash, "INITIATOR", "MINIMA_TO_ERC20",
-                                        "mxUSDT", sellMinima, tokenSymbol, buyTokenAmount, maker.ethAddress);
-                                s.myTimelock = timelock; s.myLegIsMinima = true; s.status = SwapDb.ST_STARTED;
-                                db.upsertSwap(s);
-                                notifier.onSwapsChanged();
                                 cb.ok(hash);
                             }
                             @Override public void err(String m) { cb.err(m); }
@@ -293,6 +301,10 @@ public final class SwapEngine {
         if (!ready()) { cb.err("Not ready"); return; }
         final EthNet.Token token = net.token(tokenSymbol);
         if (token == null) { cb.err("Unknown token " + tokenSymbol); return; }
+        // M1: request the mxUSDT at the 6dp trade grain. The responder locks grain(amount) (6dp), so a >6dp
+        // request would be locked SHORT and the initiator's strict want>got check (amountTokenOk) would refuse
+        // to claim → the whole deal mutual-refunds. Quantizing the request here makes it exactly fillable.
+        final String reqMinima = MinimaHtlc.grain(buyMinima);
         minima.generateSecret(new MinimaHtlc.SecretCb() {
             @Override public void ok(String secret, String hash) {
                 io.execute(() -> {
@@ -300,7 +312,7 @@ public final class SwapEngine {
                         Credentials creds = wallet.creds();
                         EthHtlc eth = new EthHtlc(rpc, creds, net);
                         BigInteger sellRaw = parseUnits(sellTokenAmount, token.decimals);
-                        BigInteger reqRaw = parseUnits(buyMinima, 18);
+                        BigInteger reqRaw = parseUnits(reqMinima, 18);
                         ensureAllowanceBlocking(eth, token.address, sellRaw);
                         // F2: base the timelock on CHAIN time (what the vault enforces), not the device clock.
                         final long timelock = ethChainNow() + TIMELOCK_SECS;
@@ -310,9 +322,9 @@ public final class SwapEngine {
                         // a harmless phantom (getContract → null → no-op).
                         ui.post(() -> {
                             db.insertSecret(hash, secret);
-                            db.insertMyHtlc(hash, buyMinima, "minima");
+                            db.insertMyHtlc(hash, reqMinima, "minima");
                             SwapDb.Swap s = baseSwap(hash, "INITIATOR", "ERC20_TO_MINIMA",
-                                    tokenSymbol, sellTokenAmount, "mxUSDT", buyMinima, maker.minimaPublicKey);
+                                    tokenSymbol, sellTokenAmount, "mxUSDT", reqMinima, maker.minimaPublicKey);
                             s.myTimelock = timelock; s.myLegIsMinima = false; s.status = SwapDb.ST_STARTED;
                             s.contractId = EthHtlc.contractId(hash);
                             db.upsertSwap(s);
@@ -867,25 +879,6 @@ public final class SwapEngine {
         return chain;
     }
 
-    private void checkEthNewSecrets(EthHtlc eth, long ethBlock) {
-        try {
-            if (lastSecretBlock == ethBlock) return;
-            long start = (lastSecretBlock == -1) ? Math.max(0, ethBlock - SECRETS_BACKLOG) : lastSecretBlock + 1;
-            long end = ethBlock;
-            if (start > end) start = end;
-            List<EthHtlc.Reveal> reveals = eth.getReveals(BigInteger.valueOf(start), BigInteger.valueOf(end));
-            lastSecretBlock = end;
-            for (EthHtlc.Reveal r : reveals) {
-                if (db.getSwap(r.hashlock) == null) continue;             // only secrets for swaps I'm in
-                if (db.insertSecret(r.hashlock, r.secret)) {
-                    ui.post(() -> { notifier.notify("Secret revealed", "Claiming your side of the swap");
-                        notifier.onSwapsChanged(); });
-                }
-            }
-        } catch (Exception e) {
-            /* leave the bookmark untouched — just retry the same range next cycle */
-        }
-    }
 
     /** Port of _checkCanCollectETHCoin: I am the receiver of an ETH HTLC contract. */
     private void checkCanCollectEth(EthHtlc eth, EthHtlc.Contract c, int minimaBlock) throws Exception {
@@ -945,17 +938,6 @@ public final class SwapEngine {
     private void declineNote(String hash, String reason) {
         if (!incoming.contains(MinimaHtlc.normKey(hash)) || !declined.add(MinimaHtlc.normKey(hash))) return;
         ui.post(() -> notifier.notify("Buy request declined", reason));
-    }
-
-    /** Refund my own expired ETH leg discovered via the getLogs scan. Superseded in practice by
-     *  checkEthContractFor (which covers every DB swap), but kept consistent with F1: broadcast is retryable
-     *  and the terminal status is confirmed on-chain (gc.refunded), never on this ack. */
-    private void checkExpiredEth(EthHtlc eth, EthHtlc.Contract c) {
-        try {
-            if (nowUnix() <= c.timelock) return;
-            if (!eth.canCollect(c.contractId)) return;   // already withdrawn/refunded on-chain
-            broadcastEthRefund(eth, c.contractId, c.hashlock);
-        } catch (Exception ignore) {}
     }
 
     /** Lock the mxUSDT counter-leg for an ERC20→mxUSDT swap I'm responding to (block+36). */
@@ -1196,7 +1178,15 @@ public final class SwapEngine {
 
     /** Blocking (user-initiated start): approve MAX if needed and wait until the allowance lands. */
     private void ensureAllowanceBlocking(EthHtlc eth, String token, BigInteger needed) throws Exception {
-        if (eth.allowance(token).compareTo(needed) >= 0) return;
+        BigInteger cur = eth.allowance(token);
+        if (cur.compareTo(needed) >= 0) return;
+        // F4: Tether reverts a non-zero → non-zero approve (require value==0 || allowed==0). A residual sub-MAX
+        // allowance — e.g. left by minimaSwap on the shared seed-derived wallet — must be zeroed first, or EVERY
+        // approve reverts and the swap can never start. A fresh wallet (cur==0) skips straight to the MAX approve.
+        if (cur.signum() > 0) {
+            eth.approve(token, BigInteger.ZERO);
+            for (int i = 0; i < 40 && eth.allowance(token).signum() != 0; i++) Thread.sleep(3000);
+        }
         eth.approve(token, MAX_UINT);
         for (int i = 0; i < 40; i++) {                                    // up to ~2 min
             Thread.sleep(3000);
@@ -1208,9 +1198,17 @@ public final class SwapEngine {
     /** Non-blocking (watcher auto-lock): if allowance is short, fire an approve and defer to a later cycle.
      *  Re-fires after a TTL so a dropped/failed approve doesn't strand the swap forever. */
     private boolean approveIfReady(EthHtlc eth, String token, BigInteger needed) throws Exception {
-        if (eth.allowance(token).compareTo(needed) >= 0) { approvePending.remove(token); return true; }
-        Long sent = approvePending.get(token);
+        BigInteger cur = eth.allowance(token);
+        if (cur.compareTo(needed) >= 0) { approvePending.remove(token); approvePending.remove(token + "|0"); return true; }
         long now = System.currentTimeMillis();
+        // F4: Tether can't go non-zero → non-zero. Zero a stale residual first (its own TTL key, so it doesn't
+        // rate-limit against the MAX approve); the next cycle, with cur==0, fires the MAX approve.
+        if (cur.signum() > 0) {
+            Long z = approvePending.get(token + "|0");
+            if (z == null || now - z > APPROVE_TTL_MS) { approvePending.put(token + "|0", now); eth.approve(token, BigInteger.ZERO); }
+            return false;
+        }
+        Long sent = approvePending.get(token);
         if (sent == null || now - sent > APPROVE_TTL_MS) { approvePending.put(token, now); eth.approve(token, MAX_UINT); }
         return false;
     }
