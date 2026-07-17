@@ -263,13 +263,17 @@ public final class EthHtlc {
         }
     }
 
-    /** Left-pad a 20-byte ETH address to a 32-byte topic (0x + 24 zero-nibbles + 40 addr hex). */
-    private static String padAddr(String addr) {
+    /** Left-pad a 20-byte ETH address to a 32-byte topic (0x + 24 zero-nibbles + 40 addr hex).
+     *  package-private (not private) so unit tests can assert the topic encoding used to filter my legs. */
+    static String padAddr(String addr) {
         String a = addr.startsWith("0x") ? addr.substring(2) : addr;
         return "0x" + "000000000000000000000000" + a.toLowerCase();
     }
 
-    private static byte[] b32(String hex) {
+    /** Coerce arbitrary hex to a 32-byte value: left-pad when shorter, keep the LAST 32 bytes when longer.
+     *  package-private (not private) so unit tests can pin this padding — it feeds every bytes32 ABI arg
+     *  (hashlock, preimage, minima pubkey), so a wrong pad would lock/withdraw against the wrong contract id. */
+    static byte[] b32(String hex) {
         byte[] b = Numeric.hexStringToByteArray(hex.startsWith("0x") ? hex : "0x" + hex);
         if (b.length == 32) return b;
         byte[] out = new byte[32];                       // left-pad / truncate to 32 bytes

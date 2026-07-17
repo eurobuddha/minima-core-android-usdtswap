@@ -33,6 +33,18 @@ android {
     buildFeatures {
         buildConfig true
     }
+    testOptions {
+        // Local JVM unit tests (src/test) exercise the fund-critical pure logic: amount grain,
+        // coloured-token value reads, HTLC txn construction, order (de)serialization, and timelock
+        // ordering. We put a REAL org.json on the test classpath (see testImplementation below), so we
+        // deliberately do NOT enable returnDefaultValues — a stubbed org.json returning null/0 would
+        // mask exactly the parsing bugs these tests must catch. The only android.* type touched at test
+        // time is a Mockito-mocked NodeApi, whose methods never run the real framework code.
+        unitTests {
+            returnDefaultValues = false
+            includeAndroidResources = false
+        }
+    }
 }
 
 dependencies {
@@ -68,4 +80,14 @@ dependencies {
     implementation 'org.web3j:abi:4.9.8'
     implementation 'org.web3j:rlp:4.9.8'
     implementation 'org.web3j:utils:4.9.8'
+
+    // ---- Local JVM unit tests (src/test) ----
+    // JUnit 4 is the runner. We add a REAL org.json implementation because Android's bundled org.json
+    // is stubbed to throw in unit tests; the fund-critical parsing (coin state, order JSON, ETH logs)
+    // must run against the genuine library. Mockito mocks the Android-coupled NodeApi so we can capture
+    // and assert the exact node commands built by lock/claim/refund WITHOUT a device or a live node.
+    // web3j (crypto/abi/utils above) is a plain JVM library, so it is available to the tests as-is.
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
+    testImplementation 'org.mockito:mockito-core:5.12.0'
 }

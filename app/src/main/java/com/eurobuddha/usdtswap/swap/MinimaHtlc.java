@@ -437,7 +437,9 @@ public final class MinimaHtlc {
         return resp == null ? "" : resp.optString("txpowid", "");
     }
 
-    private static String subtract(String a, String b) {
+    /** package-private (not private) so the swap-package unit tests can assert the change arithmetic directly —
+     *  it computes the change output on every claim/refund, so a bug here silently burns funds. */
+    static String subtract(String a, String b) {
         try { return new java.math.BigDecimal(a).subtract(new java.math.BigDecimal(b)).stripTrailingZeros().toPlainString(); }
         catch (Exception e) { return a; }
     }
@@ -463,7 +465,9 @@ public final class MinimaHtlc {
         return a.isEmpty() ? "0" : a;
     }
 
-    private static boolean positive(String a) {
+    /** package-private (not private) so unit tests can assert it directly — it decides whether a change/dust
+     *  output is emitted at all, so its boundary (exactly-zero change → no output) is fund-relevant. */
+    static boolean positive(String a) {
         try { return new java.math.BigDecimal(a).signum() > 0; } catch (Exception e) { return false; }
     }
 
