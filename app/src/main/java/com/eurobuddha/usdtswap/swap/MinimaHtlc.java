@@ -262,6 +262,7 @@ public final class MinimaHtlc {
     public void claim(JSONObject coin, String hash, String secret, PostCb cb) {
         if (!ready()) { cb.err("Minima wallet not ready"); return; }
         String coinid = coin.optString("coinid", "");
+        if (coinid.isEmpty()) { cb.err("claim: coin has no coinid"); return; }   // fail safe — never build a spend with an empty input
         String tokenid = coin.optString("tokenid", "0x00");
         String amount = MinimaHtlc.coinAmount(coin);
         String owner = stateAt(coin, 0);
@@ -291,6 +292,7 @@ public final class MinimaHtlc {
     public void refund(JSONObject coin, PostCb cb) {
         if (!ready()) { cb.err("Minima wallet not ready"); return; }
         String coinid = coin.optString("coinid", "");
+        if (coinid.isEmpty()) { cb.err("refund: coin has no coinid"); return; }   // fail safe — never build a spend with an empty input
         String tokenid = coin.optString("tokenid", "0x00");
         String amount = MinimaHtlc.coinAmount(coin);
         String owner = stateAt(coin, 0);                    // the script's refund signer = state[0]

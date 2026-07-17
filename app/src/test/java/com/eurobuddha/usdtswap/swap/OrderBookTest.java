@@ -98,6 +98,21 @@ public class OrderBookTest {
         assertEquals(25.0, rp.asks.get(0).amount, 1e-9);
     }
 
+    @Test public void toJsonExcludesReceiveSideFields() throws Exception {
+        // signerPk + coinid are set on RECEIPT (recovered from the coin), never signed. If toJson() ever
+        // included them, adding them later would change the canonical bytes and break every peer's signature
+        // verification. Assert the signed payload omits them.
+        Order o = orderWithLadder();
+        o.signerPk = "0xSIGNERPK_SHOULD_NOT_BE_SIGNED";
+        o.coinid = "0xCOINID_SHOULD_NOT_BE_SIGNED";
+        JSONObject j = o.toJson();
+        assertFalse(j.has("signerPk"));
+        assertFalse(j.has("coinid"));
+        String s = j.toString();
+        assertFalse("signed bytes must not carry the receive-side signerPk", s.contains("SIGNERPK_SHOULD_NOT_BE_SIGNED"));
+        assertFalse("signed bytes must not carry the receive-side coinid", s.contains("COINID_SHOULD_NOT_BE_SIGNED"));
+    }
+
     @Test public void fromJsonToleratesGarbage() {
         // A peer must never crash on a malformed order coin — fromJson returns a best-effort empty order.
         Order r = Order.fromJson(new JSONObject());

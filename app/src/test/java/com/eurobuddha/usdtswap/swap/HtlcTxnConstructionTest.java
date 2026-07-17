@@ -235,6 +235,43 @@ public class HtlcTxnConstructionTest {
         assertTrue("must broadcast and clean up", contains(commands, "txnpost", "txndelete:true"));
     }
 
+    // ---- fail-safe: malformed / wrong-token coins ----
+
+    @Test public void claimFailsSafeOnMissingCoinid() throws Exception {
+        // A coin with no coinid must be REFUSED before any command is built — never a spend with an empty input.
+        JSONObject coin = new JSONObject().put("tokenid", TOKEN).put("tokenamount", "0.15")
+                .put("state", new JSONObject().put("0", "0xOWNERPK").put("4", MY_PK));
+        final boolean[] erred = {false};
+        htlc.claim(coin, "0xHASH", "0xSECRET", new MinimaHtlc.PostCb() {
+            @Override public void ok(String txpowid) { throw new AssertionError("must not build a spend"); }
+            @Override public void err(String msg) { erred[0] = true; }
+        });
+        assertTrue("claim must call err on a coinid-less coin", erred[0]);
+        assertTrue("no transaction may be built", commands.isEmpty());
+    }
+
+    @Test public void refundFailsSafeOnMissingCoinid() throws Exception {
+        JSONObject coin = new JSONObject().put("tokenid", TOKEN).put("tokenamount", "0.15")
+                .put("state", new JSONObject().put("0", "0xOWNERPK"));
+        final boolean[] erred = {false};
+        htlc.refund(coin, new MinimaHtlc.PostCb() {
+            @Override public void ok(String txpowid) { throw new AssertionError("must not build a spend"); }
+            @Override public void err(String msg) { erred[0] = true; }
+        });
+        assertTrue("refund must call err on a coinid-less coin", erred[0]);
+        assertTrue("no transaction may be built", commands.isEmpty());
+    }
+
+    @Test public void claimUsesTheCoinsOwnTokenForEveryOutput() throws Exception {
+        // Both the notify and the change output must carry the SAME token as the input coin — a token mismatch
+        // between input and outputs would fail the script's VERIFYOUT(@TOKENID) or move the wrong asset.
+        JSONObject coin = new JSONObject().put("coinid", "0xCOIN").put("tokenid", TOKEN).put("tokenamount", "0.15")
+                .put("state", new JSONObject().put("0", "0xOWNERPK").put("4", MY_PK));
+        htlc.claim(coin, "0xHASH", "0xSECRET", post());
+        for (String out : allContaining(commands, "txnoutput"))
+            assertTrue("every claim output carries the coin's token: " + out, out.contains("tokenid:" + TOKEN));
+    }
+
     // ---- helpers ----
 
     private static final String TOKEN_ERC20 = "0xdac17f958d2ee523a2206206994597c13d831ec7";

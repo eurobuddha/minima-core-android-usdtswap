@@ -86,6 +86,25 @@ public class EthEncodingTest {
         for (byte b : r) assertEquals("overlong input must retain only the last 32 bytes", (byte) 0xBB, b);
     }
 
+    @Test public void b32IsTotalOnMalformedInput() {
+        // A hashlock always arrives as a 32-byte value from `random type:sha2`, but b32 must never THROW on a
+        // short / empty / odd-nibble string (a throw here would abort a lock/withdraw mid-flight and could
+        // strand the leg). It must always yield exactly 32 bytes.
+        for (String s : new String[]{"0x", "0x0", "0xabc", "0x1", "abcd", ""}) {
+            byte[] r = EthHtlc.b32(s);
+            assertEquals("b32(\"" + s + "\") must be 32 bytes", 32, r.length);
+        }
+    }
+
+    @Test public void contractIdIsTotalAndDeterministicOnOddLengthHashlock() {
+        // Even a malformed (odd-nibble) hashlock must produce a stable 32-byte contractId, never an exception.
+        String odd = "0xabc";
+        String id = EthHtlc.contractId(odd);
+        assertTrue(id.startsWith("0x"));
+        assertEquals("0x + 64 hex", 66, id.length());
+        assertEquals("deterministic", id, EthHtlc.contractId(odd));
+    }
+
     // ---- padAddr(): 20-byte address -> 32-byte log topic ----
 
     @Test public void padAddrProducesLowercase32ByteTopic() {
