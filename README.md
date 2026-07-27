@@ -1,4 +1,14 @@
-# usdtSwap
+# usdtSwap — ⚠️ DEPRECATED (superseded by AtomiX)
+
+> **⚠️ No longer maintained.** Development of usdtSwap **stopped**, and several **stability and fund-safety fixes
+> landed in AtomiX *after* this code was frozen** — they are **not** in this repo. **Do not build or run fund-moving
+> code from it as-is.** AtomiX combines minimaSwap + usdtSwap into one app (pick MINIMA or mxUSDT per trade) and
+> carries the current, fixed HTLC/swap engine. usdtSwap and minimaSwap also **clashed** when run together — both
+> derived the *same* seed-derived Ethereum address; AtomiX resolves that with one collector/poller.
+>
+> **➡️ Refer to the AtomiX code:** https://github.com/eurobuddha/minima-core-android-atomix
+
+---
 
 Native Android cross-chain **atomic swaps between ERC20 USDT (Ethereum) and native USDT on Minima (mxUSDT)**.
 A hash-time-locked-contract (HTLC) swap venue: trustless, non-custodial, peer-to-peer.
